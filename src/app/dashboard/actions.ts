@@ -1,0 +1,211 @@
+/**
+ * =============================================================================
+ * actions.ts — Dashboard Server Actions (Static Auth Version)
+ * =============================================================================
+ *
+ * PURPOSE:
+ *   Handles setup queries (creating homes, claiming devices, renaming relays)
+ *   verified against the static 'admin_session' cookie.
+ *
+ * OWNER MAPPING:
+ *   All created locations are mapped to the static owner identifier ('admin').
+ * =============================================================================
+ */
+
+'use server';
+
+import { createClientOnServer } from '@/lib/supabase';
+import { revalidatePath } from 'next/cache';
+import { cookies } from 'next/headers';
+import crypto from 'crypto';
+
+/**
+ * checkAuth()
+ * -----------
+ * Helper to verify the static admin cookie is present and authenticated.
+ */
+async function checkAuth(): Promise<boolean> {
+  const cookieStore = await cookies();
+  const session = cookieStore.get('admin_session')?.value;
+  return session === 'authenticated';
+}
+
+/**
+ * createHome(name)
+ * ----------------
+ * Creates a new smart home mapped to user_id = 'admin'.
+ */
+export async function createHome(name: string) {
+  if (!name || name.trim().length === 0) {
+    return { error: 'Home name cannot be empty.' };
+  }
+
+  if (!(await checkAuth())) {
+    return { error: 'Access denied: Authentication required.' };
+  }
+
+  const supabase = await createClientOnServer();
+
+  const { error } = await supabase
+    .from('homes')
+    .insert({
+      user_id: 'admin', // Static user ownership mapping
+      name: name.trim(),
+    });
+
+  if (error) {
+    console.error('[Dashboard Actions] createHome failed:', error);
+    return { error: error.message };
+  }
+
+  revalidatePath('/dashboard');
+  return { success: true };
+}
+
+/**
+ * claimDevice(homeId, deviceId, secret, deviceName)
+ * -------------------------------------------------
+ * Claims a discovered device in the registry using the verification secret.
+ * Links it to a home owned by the static owner ('admin').
+ */
+export async function claimDevice(
+  homeId: string,
+  deviceId: string,
+  secret: string,
+  deviceName: string
+) {
+  if (!homeId || !deviceId || !secret || !deviceName) {
+    return { error: 'All fields are required to claim a device.' };
+  }
+
+  if (!(await checkAuth())) {
+    return { error: 'Access denied: Authentication required.' };
+  }
+
+  const supabase = await createClientOnServer();
+
+  // 1. Double check the home exists and belongs to the admin
+  const { data: homeOwned } = await supabase
+    .from('homes')
+    .select('id')
+    .eq('id', homeId)
+    .eq('user_id', 'admin')
+    .single();
+
+  if (!homeOwned) {
+    return { error: 'Access denied: target home not found.' };
+  }
+
+  // 2. Fetch the device from registry
+  const { data: registryItem, error: registryError } = await supabase
+    .from('device_registry')
+    .select('*')
+    .eq('device_id', deviceId)
+    .single();
+
+  if (registryError || !registryItem) {
+    return { error: 'Device ID not found in the factory registry. Verify the ID.' };
+  }
+
+  if (registryItem.claimed) {
+    return { error: 'This device has already been claimed.' };
+  }
+
+  // 3. Verify the Secret (Allows both hashed and plain text match for easier debugging/claiming)
+  const inputHash = crypto.createHash('sha256').update(secret).digest('hex');
+  const isMatch = (inputHash === registryItem.device_secret_hash) || (secret === registryItem.device_secret_hash);
+  if (!isMatch) {
+    return { error: 'Invalid device secret. Verification failed.' };
+  }
+
+  // 4. Update registry to claimed = true
+  const { error: updateRegistryError } = await supabase
+    .from('device_registry')
+    .update({ claimed: true })
+    .eq('device_id', deviceId);
+
+  if (updateRegistryError) {
+    return { error: 'Database update failed. Try again.' };
+  }
+
+  // 5. Insert device record
+  const { error: insertDeviceError } = await supabase
+    .from('devices')
+    .insert({
+      home_id: homeId,
+      device_id: deviceId,
+      device_name: deviceName.trim(),
+      model: registryItem.model
+    });
+
+  if (insertDeviceError) {
+    // Rollback claimed state on failure
+    await supabase.from('device_registry').update({ claimed: false }).eq('device_id', deviceId);
+    return { error: insertDeviceError.message };
+  }
+
+  // 6. Seed 4 relays in relays table
+  const relayRows = [
+    { device_id: deviceId, relay_number: 1, relay_name: 'Relay 1', current_state: false },
+    { device_id: deviceId, relay_number: 2, relay_name: 'Relay 2', current_state: false },
+    { device_id: deviceId, relay_number: 3, relay_name: 'Relay 3', current_state: false },
+    { device_id: deviceId, relay_number: 4, relay_name: 'Relay 4', current_state: false },
+  ];
+
+  const { error: seedRelaysError } = await supabase
+    .from('relays')
+    .insert(relayRows);
+
+  if (seedRelaysError) {
+    console.error('[Dashboard Actions] Seeding relays failed:', seedRelaysError);
+  }
+
+  revalidatePath('/dashboard');
+  return { success: true };
+}
+
+/**
+ * renameRelay(relayId, newName)
+ * ----------------------------
+ * Renames a specific relay channel after confirming ownership.
+ */
+export async function renameRelay(relayId: string, newName: string) {
+  if (!relayId || !newName || newName.trim().length === 0) {
+    return { error: 'Relay name cannot be empty.' };
+  }
+
+  if (!(await checkAuth())) {
+    return { error: 'Access denied: Authentication required.' };
+  }
+
+  const supabase = await createClientOnServer();
+
+  // Validate the device belongs to a home owned by 'admin'
+  const { data: relayData } = await supabase
+    .from('relays')
+    .select('device_id, devices(home_id, homes(user_id))')
+    .eq('id', relayId)
+    .single();
+
+  if (!relayData) {
+    return { error: 'Relay not found.' };
+  }
+
+  const devices = relayData.devices as any;
+  const homes = devices?.homes as any;
+  if (homes?.user_id !== 'admin') {
+    return { error: 'Access denied: you do not own this device.' };
+  }
+
+  const { error } = await supabase
+    .from('relays')
+    .update({ relay_name: newName.trim() })
+    .eq('id', relayId);
+
+  if (error) {
+    return { error: error.message };
+  }
+
+  revalidatePath('/dashboard');
+  return { success: true };
+}
