@@ -68,3 +68,23 @@ CREATE TABLE IF NOT EXISTS device_events (
 INSERT INTO device_registry (device_id, device_secret_hash, model, claimed)
 VALUES ('ESP001', '301df2220b22a0753066d7ea8941097fa620e980f74577884df24a3e795c64b6', '4CH_RELAY', false)
 ON CONFLICT (device_id) DO NOTHING;
+
+-- 6. OAUTH CODES
+CREATE TABLE IF NOT EXISTS oauth_codes (
+  code TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL DEFAULT 'admin',
+  redirect_uri TEXT NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 7. OAUTH TOKENS
+CREATE TABLE IF NOT EXISTS oauth_tokens (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id TEXT NOT NULL DEFAULT 'admin',
+  access_token TEXT NOT NULL UNIQUE,
+  refresh_token TEXT NOT NULL UNIQUE,
+  expires_at TIMESTAMPTZ NOT NULL,
+  refresh_expires_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now()
+);

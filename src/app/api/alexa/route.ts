@@ -3,26 +3,29 @@
  * src/app/api/alexa/route.ts — Alexa Smart Home Directive Webhook Endpoint
  * =============================================================================
  *
+ * PATH:
+ *   POST /api/alexa
+ *
  * PURPOSE:
  *   Acts as the central webhook endpoint that receives JSON requests from the
  *   AWS Lambda function representing your Alexa Smart Home Skill.
  *
- * HOW DIRECTIVE ROUTING WORKS:
- *   Alexa speaks to your skill using "Directives". Each directive contains:
- *     - A namespace (e.g. "Alexa.Discovery", "Alexa.PowerController")
- *     - A name (e.g. "Discover", "TurnOn", "TurnOff", "ReportState")
- *
- *   This endpoint inspects the namespace/name and routes the request:
- *     1. Alexa.Discovery::Discover -> Retrieves dynamic relays from Supabase and
- *        returns them as Alexa endpoints.
- *     2. Alexa.PowerController::TurnOn/TurnOff -> Power controls (relay command).
- *     3. Alexa::ReportState -> Requests status values (ON/OFF, Online/Offline).
+ * SECURITY ENFORCEMENT (Improvement 5):
+ *   1. Extracts the bearer access token directly from the JSON body (Alexa does
+ *      not pass it in the HTTP headers).
+ *   2. Validates it via `validateAccessToken(token)` (checking DB record and expiry).
+ *   3. If invalid/expired, returns a compliant Alexa `INVALID_AUTHORIZATION_CREDENTIAL`
+ *      error payload instead of an HTTP 401. This tells Alexa to prompt the user
+ *      to re-authenticate.
+ *   4. scopes all queries and control commands to the resolved database `user_id`,
+ *      making it multi-user compatible.
  * =============================================================================
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { getAlexaEndpoints } from "@/lib/alexa/discovery";
 import { handleAlexaPowerControl } from "@/lib/alexa/powerController";
+import { validateAccessToken } from "@/lib/alexa/tokenValidation";
 import { AlexaDirective, AlexaResponse } from "@/lib/alexa/types";
 
 export async function POST(req: NextRequest) {
@@ -39,12 +42,40 @@ export async function POST(req: NextRequest) {
 
     const { namespace, name } = header;
 
+    // ── Extract Token from Directive Payload ─────────────────────────────────
+    // Alexa places the OAuth access token inside the JSON body, depending on action:
+    //   - Discovery: body.directive.payload.scope.token
+    //   - Control / State Report: body.directive.endpoint.scope.token
+    const token = body?.directive?.payload?.scope?.token || body?.directive?.endpoint?.scope?.token;
+    
+    // Validate token against DB
+    const userId = await validateAccessToken(token);
+
+    if (!userId) {
+      console.warn(`[Alexa Route] Rejecting request: Invalid or expired OAuth token.`);
+      
+      // Return Alexa Smart Home compatible Authorization error payload (Improvement 5)
+      return NextResponse.json({
+        event: {
+          header: {
+            namespace: "Alexa",
+            name: "ErrorResponse",
+            payloadVersion: "3",
+            messageId: crypto.randomUUID(),
+          },
+          payload: {
+            type: "INVALID_AUTHORIZATION_CREDENTIAL",
+            message: "Access token is invalid, expired, or missing. Please re-link your account in the Alexa app."
+          }
+        }
+      });
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     //  1. DEVICE DISCOVERY DIRECTIVE (Alexa.Discovery::Discover)
     // ─────────────────────────────────────────────────────────────────────────
     if (namespace === "Alexa.Discovery" && name === "Discover") {
-      const userId = "admin"; // Defaulting to our static owner for now
-
+      // Scoped dynamically to the validated user
       const endpoints = await getAlexaEndpoints(userId);
 
       const response: AlexaResponse = {
@@ -82,13 +113,12 @@ export async function POST(req: NextRequest) {
       }
 
       const turnOn = name === "TurnOn";
-      const userId = "admin"; // Defaulting to static user
 
-      // Dispatch command through our power controller service
+      // Dispatch command through our power controller service scoped to this user
       const result = await handleAlexaPowerControl(userId, deviceId, relayNumber, turnOn);
 
       if (!result.success) {
-        // Return standard Alexa error payload if the command failed to send or check out
+        // Return standard Alexa error payload if the command failed to send
         return NextResponse.json(createErrorResponse("Alexa", "InternalError", "Failed to dispatch control command to the smart-home device"));
       }
 
@@ -101,7 +131,7 @@ export async function POST(req: NextRequest) {
       const response: AlexaResponse = {
         context: {
           properties: [
-            // 1. Report the new powerState
+            // 1. Report the new powerState (Immediate Alexa State Update)
             {
               namespace: "Alexa.PowerController",
               name: "powerState",
