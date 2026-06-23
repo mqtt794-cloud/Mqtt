@@ -27,9 +27,30 @@ export async function POST(req: NextRequest) {
     // 1. Read URL-encoded form fields (Alexa sends x-www-form-urlencoded)
     const formData = await req.formData();
     
-    const grantType = formData.get('grant_type') as string;
-    const clientId = formData.get('client_id') as string;
-    const clientSecret = formData.get('client_secret') as string;
+    let grantType = (formData.get('grant_type') as string)?.trim();
+    if (grantType) grantType = grantType.replace(/^["']|["']$/g, '');
+
+    let clientId = (formData.get('client_id') as string)?.trim();
+    if (clientId) clientId = clientId.replace(/^["']|["']$/g, '');
+
+    let clientSecret = (formData.get('client_secret') as string)?.trim();
+    if (clientSecret) clientSecret = clientSecret.replace(/^["']|["']$/g, '');
+
+    // Support client credentials from the standard HTTP Basic Auth header (as per RFC 6749)
+    const authHeader = req.headers.get('authorization');
+    if (authHeader && authHeader.toLowerCase().startsWith('basic ')) {
+      try {
+        const base64Credentials = authHeader.substring(6).trim();
+        const credentials = Buffer.from(base64Credentials, 'base64').toString('ascii');
+        const parts = credentials.split(':');
+        if (parts.length === 2) {
+          clientId = parts[0].trim().replace(/^["']|["']$/g, '');
+          clientSecret = parts[1].trim().replace(/^["']|["']$/g, '');
+        }
+      } catch (e) {
+        console.error('[OAuth Token API] Failed to parse HTTP Basic Auth header:', e);
+      }
+    }
 
     console.log(`[OAuth Token API] Token request received. grant_type: ${grantType}, client_id: ${clientId}`);
 
@@ -45,8 +66,11 @@ export async function POST(req: NextRequest) {
     //  A. AUTHORIZATION CODE GRANT (Exchanging code for tokens)
     // ─────────────────────────────────────────────────────────────────────────
     if (grantType === 'authorization_code') {
-      const code = formData.get('code') as string;
-      const redirectUri = formData.get('redirect_uri') as string;
+      let code = (formData.get('code') as string)?.trim();
+      if (code) code = code.replace(/^["']|["']$/g, '');
+
+      let redirectUri = (formData.get('redirect_uri') as string)?.trim();
+      if (redirectUri) redirectUri = redirectUri.replace(/^["']|["']$/g, '');
 
       if (!code || !redirectUri) {
         return NextResponse.json(
@@ -78,7 +102,8 @@ export async function POST(req: NextRequest) {
     //  B. REFRESH TOKEN GRANT (Refreshing expired access tokens)
     // ─────────────────────────────────────────────────────────────────────────
     if (grantType === 'refresh_token') {
-      const refreshToken = formData.get('refresh_token') as string;
+      let refreshToken = (formData.get('refresh_token') as string)?.trim();
+      if (refreshToken) refreshToken = refreshToken.replace(/^["']|["']$/g, '');
 
       if (!refreshToken) {
         return NextResponse.json(
