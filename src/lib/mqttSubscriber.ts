@@ -140,27 +140,48 @@ class MqttSubscriber {
   private async _handleStatus(deviceId: string, payload: any) {
     console.log(`[MQTT Subscriber] Status from ${deviceId}`);
 
-    // 1. Atomically ensure the device exists in device_registry.
-    //    - upsert with ignoreDuplicates:true = INSERT ... ON CONFLICT DO NOTHING
-    //    - Returns count=1 when a NEW row was inserted, count=0 for a duplicate.
-    const defaultHash = crypto.createHash('sha256').update('X7K29A').digest('hex');
+    // 1. Ensure the device exists in device_registry and verify secrets.
+    const incomingSecret = payload.deviceSecret || payload.secret;
+    if (incomingSecret) {
+      const incomingHash = crypto.createHash('sha256').update(incomingSecret).digest('hex');
 
-    const { count, error: upsertError } = await supabaseAdmin
-      .from('device_registry')
-      .upsert(
-        {
-          device_id: deviceId,
-          device_secret_hash: defaultHash,
-          model: payload.model || '4CH_RELAY',
-        },
-        { onConflict: 'device_id', ignoreDuplicates: true, count: 'exact' }
-      );
+      // Fetch existing device from registry to avoid overwriting
+      const { data: existing, error: fetchError } = await supabaseAdmin
+        .from('device_registry')
+        .select('*')
+        .eq('device_id', deviceId)
+        .maybeSingle();
 
-    if (upsertError) {
-      console.error(`[MQTT Subscriber] Registry upsert error for ${deviceId}:`, upsertError.message);
-    } else if (count && count > 0) {
-      // Only log "discovered" when a genuinely new row was inserted
-      console.log(`[MQTT Subscriber] Discovered new unclaimed device: ${deviceId}. Added to registry with default secret.`);
+      if (fetchError) {
+        console.error(`[MQTT Subscriber] Error fetching from registry for ${deviceId}:`, fetchError.message);
+      }
+
+      if (existing) {
+        // Existing Device Protection: Do NOT overwrite. Log mismatch if detected.
+        if (existing.device_secret_hash !== incomingHash) {
+          console.warn(`[SECURITY]\nSecret mismatch detected\nStored: ${existing.device_secret_hash}\nIncoming: ${incomingHash}`);
+        }
+      } else {
+        // New device discovery: Insert incoming secret from firmware
+        const { error: insertError } = await supabaseAdmin
+          .from('device_registry')
+          .insert({
+            device_id: deviceId,
+            device_secret_hash: incomingHash,
+            model: payload.model || '4CH_RELAY',
+            claimed: false
+          });
+
+        if (insertError) {
+          console.error(`[DISCOVERY] Registration failed for ${deviceId}:`, insertError.message);
+        } else {
+          console.log(`[DISCOVERY] Device ID: ${deviceId}`);
+          console.log(`[DISCOVERY] Secret Hash Stored`);
+          console.log(`[DISCOVERY] Registration Success`);
+        }
+      }
+    } else {
+      console.log(`[MQTT Subscriber] No deviceSecret in status payload from ${deviceId}. Skipping registry check.`);
     }
 
     // 2. Check if device is claimed (exists in devices table)
