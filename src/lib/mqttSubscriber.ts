@@ -58,6 +58,9 @@ class MqttSubscriber {
       return;
     }
 
+    // Run watchdog stale jobs cleanup on startup
+    await this._cleanupOtaJobs();
+
     // ── Step 2: Validate MQTT credentials ────────────────────────────────────
     const brokerUrl = process.env.MQTT_BROKER_URL;
     const username  = process.env.MQTT_USERNAME;
@@ -103,6 +106,44 @@ class MqttSubscriber {
     this._client.on('error', (error) => {
       console.error('[MQTT Subscriber] Error:', error);
     });
+  }
+
+  private async _cleanupOtaJobs() {
+    try {
+      const now = new Date();
+      
+      // 1. Timeout for downloading/installing: 10 minutes
+      const downloadTimeoutLimit = new Date(now.getTime() - 10 * 60 * 1000).toISOString();
+      const { data: downloadStaleJobs, error: downloadErr } = await supabaseAdmin
+        .from('ota_jobs')
+        .update({ status: 'FAILED', error_code: 'DOWNLOAD_TIMEOUT', updated_at: now.toISOString() })
+        .in('status', ['PENDING', 'DOWNLOADING', 'INSTALLING'])
+        .lt('updated_at', downloadTimeoutLimit)
+        .select('id, device_id');
+
+      if (downloadErr) {
+        console.error('[MQTT Subscriber Watchdog] Failed to clean up downloading/installing jobs:', downloadErr.message);
+      } else if (downloadStaleJobs && downloadStaleJobs.length > 0) {
+        console.log(`[MQTT Subscriber Watchdog] Timed out ${downloadStaleJobs.length} active downloading jobs:`, downloadStaleJobs);
+      }
+
+      // 2. Timeout for rebooting (Rollback detection): 5 minutes
+      const rollbackLimit = new Date(now.getTime() - 5 * 60 * 1000).toISOString();
+      const { data: rollbackJobs, error: rollbackErr } = await supabaseAdmin
+        .from('ota_jobs')
+        .update({ status: 'FAILED', error_code: 'ROLLBACK_DETECTED', updated_at: now.toISOString() })
+        .eq('status', 'REBOOTING')
+        .lt('updated_at', rollbackLimit)
+        .select('id, device_id');
+
+      if (rollbackErr) {
+        console.error('[MQTT Subscriber Watchdog] Failed to clean up rebooting/rollback jobs:', rollbackErr.message);
+      } else if (rollbackJobs && rollbackJobs.length > 0) {
+        console.log(`[MQTT Subscriber Watchdog] Rolled back ${rollbackJobs.length} rebooting jobs (timeout):`, rollbackJobs);
+      }
+    } catch (watchdogErr) {
+      console.error('[MQTT Subscriber Watchdog] Stale job cleanup failed:', watchdogErr);
+    }
   }
 
   /**
@@ -218,6 +259,48 @@ class MqttSubscriber {
           model: payload.model
         })
         .eq('device_id', deviceId);
+
+      // Verify active/rebooting OTA job for successful upgrade check
+      const { data: activeOtaJob, error: otaJobErr } = await supabaseAdmin
+        .from('ota_jobs')
+        .select('id, target_version, status, updated_at')
+        .eq('device_id', deviceId)
+        .in('status', ['PENDING', 'DOWNLOADING', 'INSTALLING', 'REBOOTING'])
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (otaJobErr) {
+        console.error(`[MQTT Subscriber] Failed to query active ota_jobs for ${deviceId}:`, otaJobErr.message);
+      }
+
+      if (activeOtaJob) {
+        if (payload.firmware === activeOtaJob.target_version) {
+          await supabaseAdmin
+            .from('ota_jobs')
+            .update({
+              status: 'SUCCESS',
+              progress: 100,
+              updated_at: new Date().toISOString(),
+              error_code: null
+            })
+            .eq('id', activeOtaJob.id);
+          console.log(`[MQTT Subscriber] OTA Job ${activeOtaJob.id} succeeded for ${deviceId}. Version upgraded to ${payload.firmware}.`);
+        } else if (activeOtaJob.status === 'REBOOTING') {
+          const elapsed = Date.now() - new Date(activeOtaJob.updated_at).getTime();
+          if (elapsed >= 5 * 60 * 1000) {
+            await supabaseAdmin
+              .from('ota_jobs')
+              .update({
+                status: 'FAILED',
+                error_code: 'ROLLBACK_DETECTED',
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', activeOtaJob.id);
+            console.log(`[MQTT Subscriber] OTA Job ${activeOtaJob.id} failed (ROLLBACK_DETECTED) for ${deviceId} after 5+ minutes elapsed.`);
+          }
+        }
+      }
 
       // Automatic Relay Table Cleanup for 2-channel hardware simplification
       if (payload.model === '2CH_RELAY') {
@@ -406,7 +489,7 @@ class MqttSubscriber {
       .from('ota_jobs')
       .select('*')
       .eq('device_id', deviceId)
-      .in('status', ['PENDING', 'DOWNLOADING', 'INSTALLING'])
+      .in('status', ['PENDING', 'DOWNLOADING', 'INSTALLING', 'REBOOTING'])
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -417,13 +500,17 @@ class MqttSubscriber {
 
     if (activeJob) {
       // 2. Update the active job status
+      const updateData: any = {
+        status: status,
+        progress: progress,
+        updated_at: new Date().toISOString()
+      };
+      if (status === 'FAILED' && errorMsg) {
+        updateData.error_code = errorMsg;
+      }
       const { error: updateError } = await supabaseAdmin
         .from('ota_jobs')
-        .update({
-          status: status,
-          progress: progress,
-          updated_at: new Date().toISOString()
-        })
+        .update(updateData)
         .eq('id', activeJob.id);
 
       if (updateError) {

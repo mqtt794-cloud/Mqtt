@@ -195,14 +195,16 @@ class MqttPublisher {
     deviceId: string,
     version: string,
     url: string,
-    sha256: string
+    sha256: string,
+    size: number
   ): Promise<string | null> {
     const client = this.connect();
     const topic = `home/${deviceId}/ota`;
     const payloadObject = {
       version: version,
       url: url,
-      sha256: sha256
+      sha256: sha256,
+      size: size
     };
 
     const payloadString = JSON.stringify(payloadObject);

@@ -97,6 +97,9 @@ CREATE TABLE IF NOT EXISTS firmware_releases (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   version TEXT NOT NULL UNIQUE,
   firmware_url TEXT NOT NULL,
+  sha256 VARCHAR(64) NOT NULL,
+  firmware_size BIGINT NOT NULL,
+  compatible_model VARCHAR(30) NOT NULL,
   release_notes TEXT,
   created_at TIMESTAMPTZ DEFAULT now()
 );
@@ -106,8 +109,9 @@ CREATE TABLE IF NOT EXISTS ota_jobs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   device_id TEXT NOT NULL REFERENCES devices(device_id) ON DELETE CASCADE,
   target_version TEXT NOT NULL,
-  status TEXT NOT NULL CHECK (status IN ('PENDING', 'DOWNLOADING', 'INSTALLING', 'SUCCESS', 'FAILED')),
+  status TEXT NOT NULL CHECK (status IN ('PENDING', 'DOWNLOADING', 'INSTALLING', 'REBOOTING', 'SUCCESS', 'FAILED')),
   progress INTEGER DEFAULT 0 CHECK (progress BETWEEN 0 AND 100),
+  error_code TEXT,
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );

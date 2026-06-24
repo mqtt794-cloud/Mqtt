@@ -464,12 +464,12 @@ export async function triggerOtaUpdate(deviceId: string, releaseId: string) {
 
   // 5. Publish MQTT OTA command
   const { mqttPublisher } = await import('@/lib/mqttPublisher');
-  const published = await mqttPublisher.publishOtaCommand(deviceId, targetVer, release.firmware_url, release.sha256);
+  const published = await mqttPublisher.publishOtaCommand(deviceId, targetVer, release.firmware_url, release.sha256, Number(release.firmware_size || 0));
   if (!published) {
     // Fail job in database immediately
     await supabase
       .from('ota_jobs')
-      .update({ status: 'FAILED' })
+      .update({ status: 'FAILED', error_code: 'MQTT_PUBLISH_FAILED' })
       .eq('id', jobId);
       
     return { error: 'MQTT publication failed. Cloud could not reach the broker.' };
