@@ -105,9 +105,11 @@ export default async function DashboardPage() {
     .eq('user_id', 'admin')
     .order('name');   // Sort homes alphabetically
 
-  console.log("[Dashboard] User:", "admin");
-  console.log("[Dashboard] Homes:", homes);
-  console.log("[Dashboard] Error:", error);
+  console.log("========== DASHBOARD DEBUG ==========");
+  console.log("Homes Error:", error);
+  console.log("Homes Data:", JSON.stringify(homes, null, 2));
+  console.log("Homes Count:", homes?.length);
+  console.log("=====================================");
 
   // Fetch unclaimed devices so ClaimDeviceForm can show a dropdown
   const { data: unclaimedDevices } = await supabase
