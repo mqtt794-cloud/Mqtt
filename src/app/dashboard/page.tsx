@@ -77,7 +77,7 @@ export default async function DashboardPage() {
    */
   const supabase = await createClientOnServer();
 
-  const { data: homes } = await supabase
+  const { data: homes, error } = await supabase
     .from('homes')
     .select(`
       id,
@@ -104,6 +104,10 @@ export default async function DashboardPage() {
     `)
     .eq('user_id', 'admin')
     .order('name');   // Sort homes alphabetically
+
+  console.log("[Dashboard] User:", "admin");
+  console.log("[Dashboard] Homes:", homes);
+  console.log("[Dashboard] Error:", error);
 
   // Fetch unclaimed devices so ClaimDeviceForm can show a dropdown
   const { data: unclaimedDevices } = await supabase
