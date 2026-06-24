@@ -65,6 +65,8 @@ interface FirmwareRelease {
   firmware_size: number;
   compatible_model: string;
   release_notes: string | null;
+  is_stable: boolean;
+  minimum_firmware_version: string | null;
 }
 
 interface DeviceCardProps {

@@ -9,6 +9,7 @@ interface FirmwareRelease {
   version: string;
   firmware_url: string;
   release_notes: string | null;
+  minimum_firmware_version: string | null;
 }
 
 interface OtaJob {
@@ -100,8 +101,13 @@ export default function OtaUpdatePanel({ deviceId, currentVersion, latestRelease
 
   const hasUpdate = isNewerVersion(latestRelease.version, currentVersion);
   
+  const isOlderThanMin = latestRelease.minimum_firmware_version
+    ? isNewerVersion(latestRelease.minimum_firmware_version, currentVersion)
+    : false;
+  
   // Trigger update handler
   const handleUpdate = async () => {
+    if (isOlderThanMin) return;
     setLoading(true);
     setError(null);
     try {
@@ -162,9 +168,18 @@ export default function OtaUpdatePanel({ deviceId, currentVersion, latestRelease
           {hasUpdate ? (
             <div className="flex flex-col gap-2.5">
               <div className="text-xs text-slate-300 leading-relaxed bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/40">
-                <span className="font-bold text-emerald-400 block mb-0.5">Update Available</span>
+                <span className="font-bold text-indigo-400 block mb-0.5">Update Available</span>
                 {latestRelease.release_notes ? latestRelease.release_notes : 'New features and resilience improvements.'}
               </div>
+
+              {isOlderThanMin && (
+                <div className="flex items-start gap-2 bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 text-xs text-amber-400 leading-normal">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>
+                    Update blocked. Requires version <strong>&gt;= {latestRelease.minimum_firmware_version}</strong>. Please upgrade to an intermediate version first.
+                  </span>
+                </div>
+              )}
 
               {error && (
                 <div className="flex items-start gap-1.5 text-xs text-red-400 bg-red-950/15 border border-red-500/10 rounded-lg p-2.5">
@@ -180,20 +195,30 @@ export default function OtaUpdatePanel({ deviceId, currentVersion, latestRelease
                 </div>
               )}
 
-              <button
-                onClick={handleUpdate}
-                disabled={loading}
-                className="w-full py-1.5 px-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold rounded-lg text-xs cursor-pointer flex items-center justify-center gap-1.5 transition-colors"
-              >
-                {loading ? (
-                  <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                ) : (
-                  <>
-                    <ArrowUpCircle className="w-3.5 h-3.5" />
-                    Update Device to {latestRelease.version}
-                  </>
-                )}
-              </button>
+              {isOlderThanMin ? (
+                <button
+                  disabled={true}
+                  className="w-full py-1.5 px-3 bg-slate-900 text-slate-500 border border-slate-850 font-bold rounded-lg text-xs cursor-not-allowed flex items-center justify-center gap-1.5"
+                >
+                  <ArrowUpCircle className="w-3.5 h-3.5 text-slate-600" />
+                  Update Blocked (Requires &gt;= {latestRelease.minimum_firmware_version})
+                </button>
+              ) : (
+                <button
+                  onClick={handleUpdate}
+                  disabled={loading}
+                  className="w-full py-1.5 px-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold rounded-lg text-xs cursor-pointer flex items-center justify-center gap-1.5 transition-colors"
+                >
+                  {loading ? (
+                    <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    <>
+                      <ArrowUpCircle className="w-3.5 h-3.5" />
+                      Update Device to {latestRelease.version}
+                    </>
+                  )}
+                </button>
+              )}
             </div>
           ) : (
             <div className="text-slate-500 text-xs italic text-center py-1">

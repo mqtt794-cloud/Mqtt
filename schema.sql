@@ -95,13 +95,16 @@ CREATE TABLE IF NOT EXISTS oauth_tokens (
 -- 8. FIRMWARE RELEASES
 CREATE TABLE IF NOT EXISTS firmware_releases (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  version TEXT NOT NULL UNIQUE,
+  version TEXT NOT NULL,
   firmware_url TEXT NOT NULL,
   sha256 VARCHAR(64) NOT NULL,
   firmware_size BIGINT NOT NULL,
   compatible_model VARCHAR(30) NOT NULL,
   release_notes TEXT,
-  created_at TIMESTAMPTZ DEFAULT now()
+  is_stable BOOLEAN NOT NULL DEFAULT FALSE,
+  minimum_firmware_version TEXT,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(version, compatible_model)
 );
 
 -- 9. OTA JOBS

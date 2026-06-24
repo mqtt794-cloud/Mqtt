@@ -77,12 +77,13 @@ export default async function DashboardPage() {
    */
   const supabase = await createClientOnServer();
 
-  // Fetch latest release for all models in a single query to avoid N+1 query loops
+  // Fetch latest stable release for all models in a single query to avoid N+1 query loops
   const latestReleaseMap: Record<string, any> = {};
   try {
     const { data: releases } = await supabase
       .from('firmware_releases')
-      .select('id, version, firmware_url, sha256, firmware_size, compatible_model, release_notes')
+      .select('id, version, firmware_url, sha256, firmware_size, compatible_model, release_notes, is_stable, minimum_firmware_version')
+      .eq('is_stable', true)
       .order('created_at', { ascending: false });
     
     if (releases) {
@@ -181,11 +182,20 @@ export default async function DashboardPage() {
           {/* Summary stats + sign out */}
           <div className="flex items-center gap-4">
             {/* Live counts */}
-            <div className="hidden sm:flex items-center gap-3 text-xs text-slate-500">
+            <div className="hidden md:flex items-center gap-3 text-xs text-slate-500">
               <span>{typedHomes.length} home{typedHomes.length !== 1 ? 's' : ''}</span>
               <span className="text-slate-700">·</span>
               <span>{totalDevices} device{totalDevices !== 1 ? 's' : ''}</span>
             </div>
+
+            {/* Firmware Manager Link */}
+            <a
+              href="/dashboard/firmware"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-400 hover:text-indigo-300 bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 rounded-lg transition-colors"
+            >
+              <Cpu className="w-3.5 h-3.5" />
+              Firmware Manager
+            </a>
 
             {/* Sign out button — submits a form that calls the logout server action */}
             <form action={logout}>

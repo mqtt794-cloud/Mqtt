@@ -31,3 +31,11 @@ CREATE TABLE IF NOT EXISTS ota_jobs (
 -- 3. Apply alters in case tables already existed
 ALTER TABLE firmware_releases ADD COLUMN IF NOT EXISTS firmware_size BIGINT;
 ALTER TABLE ota_jobs ADD COLUMN IF NOT EXISTS error_code TEXT;
+
+-- 4. Alter unique constraint on firmware_releases to be version per model
+ALTER TABLE firmware_releases DROP CONSTRAINT IF EXISTS firmware_releases_version_key;
+ALTER TABLE firmware_releases ADD CONSTRAINT unique_version_model UNIQUE (version, compatible_model);
+
+-- 5. Add columns is_stable and minimum_firmware_version to firmware_releases
+ALTER TABLE firmware_releases ADD COLUMN IF NOT EXISTS is_stable BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE firmware_releases ADD COLUMN IF NOT EXISTS minimum_firmware_version TEXT;
