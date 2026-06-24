@@ -29,6 +29,7 @@
 import RelayCard from './RelayCard';
 import RenameRelayButton from './RenameRelayButton';
 import RefreshConfigButton from './RefreshConfigButton';
+import OtaUpdatePanel from './OtaUpdatePanel';
 
 // --------------------------------------------------------------------------
 // Type definitions — describe the shape of data this component expects
@@ -56,8 +57,16 @@ interface Device {
   relays: Relay[];
 }
 
+interface FirmwareRelease {
+  id: string;
+  version: string;
+  firmware_url: string;
+  release_notes: string | null;
+}
+
 interface DeviceCardProps {
   device: Device;
+  latestRelease: FirmwareRelease | null;
 }
 
 // --------------------------------------------------------------------------
@@ -83,7 +92,7 @@ function formatLastSeen(isoString: string | null): string {
 // --------------------------------------------------------------------------
 // Component
 // --------------------------------------------------------------------------
-export default function DeviceCard({ device }: DeviceCardProps) {
+export default function DeviceCard({ device, latestRelease }: DeviceCardProps) {
   // Sort relays by their number (1, 2, 3, 4) so they always appear in order
   const sortedRelays = [...device.relays].sort(
     (a, b) => a.relay_number - b.relay_number
@@ -166,6 +175,13 @@ export default function DeviceCard({ device }: DeviceCardProps) {
           </span>
         </span>
       </div>
+
+      {/* Embedded OTA Update Panel */}
+      <OtaUpdatePanel
+        deviceId={device.device_id}
+        currentVersion={device.firmware_version || '0.0.0'}
+        latestRelease={latestRelease}
+      />
 
       {/* ── Relay Channels ────────────────────────────────────────────── */}
       {sortedRelays.length === 0 ? (

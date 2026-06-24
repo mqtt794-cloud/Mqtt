@@ -91,3 +91,23 @@ CREATE TABLE IF NOT EXISTS oauth_tokens (
   refresh_expires_at TIMESTAMPTZ NOT NULL,
   created_at TIMESTAMPTZ DEFAULT now()
 );
+
+-- 8. FIRMWARE RELEASES
+CREATE TABLE IF NOT EXISTS firmware_releases (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  version TEXT NOT NULL UNIQUE,
+  firmware_url TEXT NOT NULL,
+  release_notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 9. OTA JOBS
+CREATE TABLE IF NOT EXISTS ota_jobs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  device_id TEXT NOT NULL REFERENCES devices(device_id) ON DELETE CASCADE,
+  target_version TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('PENDING', 'DOWNLOADING', 'INSTALLING', 'SUCCESS', 'FAILED')),
+  progress INTEGER DEFAULT 0 CHECK (progress BETWEEN 0 AND 100),
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);

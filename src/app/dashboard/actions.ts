@@ -370,3 +370,116 @@ export async function refreshDeviceConfig(deviceId: string) {
   revalidatePath('/dashboard');
   return { success: true };
 }
+
+/**
+ * isNewerVersion(target, current)
+ * ------------------------------
+ * Compares two semantic versions. Returns true if target is newer than current.
+ */
+function isNewerVersion(target: string, current: string): boolean {
+  const tParts = target.replace(/[^0-9.]/g, '').split('.').map(Number);
+  const cParts = current.replace(/[^0-9.]/g, '').split('.').map(Number);
+  
+  while (tParts.length < 3) tParts.push(0);
+  while (cParts.length < 3) cParts.push(0);
+  
+  for (let i = 0; i < 3; i++) {
+    if (tParts[i] > cParts[i]) return true;
+    if (tParts[i] < cParts[i]) return false;
+  }
+  return false;
+}
+
+/**
+ * triggerOtaUpdate(deviceId, releaseId)
+ * ------------------------------------
+ * Verifies ownership, validates version delta, inserts a pending job, and dispatches the MQTT OTA event.
+ */
+export async function triggerOtaUpdate(deviceId: string, releaseId: string) {
+  if (!deviceId || !releaseId) {
+    return { error: 'Device ID and Release ID are required.' };
+  }
+
+  if (!(await checkAuth())) {
+    return { error: 'Access denied: Authentication required.' };
+  }
+
+  const supabase = await createClientOnServer();
+
+  // 1. Verify device ownership
+  const { data: deviceRecord } = await supabase
+    .from('devices')
+    .select('device_id, firmware_version, homes(user_id)')
+    .eq('device_id', deviceId)
+    .single();
+
+  if (!deviceRecord) {
+    return { error: 'Device not found.' };
+  }
+
+  const homes = deviceRecord.homes as any;
+  if (homes?.user_id !== 'admin') {
+    return { error: 'Access denied: you do not own this device.' };
+  }
+
+  // 2. Fetch target firmware release
+  const { data: release } = await supabase
+    .from('firmware_releases')
+    .select('*')
+    .eq('id', releaseId)
+    .single();
+
+  if (!release) {
+    return { error: 'Firmware release not found.' };
+  }
+
+  // 3. Perform safety semver comparison
+  const currentVer = deviceRecord.firmware_version || '0.0.0';
+  const targetVer = release.version;
+  if (!isNewerVersion(targetVer, currentVer)) {
+    return { error: `Upgrade blocked: target version ${targetVer} is not newer than current version ${currentVer}.` };
+  }
+
+  // 4. Create pending ota_job entry
+  const jobId = crypto.randomUUID();
+  const { error: insertError } = await supabase
+    .from('ota_jobs')
+    .insert({
+      id: jobId,
+      device_id: deviceId,
+      target_version: targetVer,
+      status: 'PENDING',
+      progress: 0
+    });
+
+  if (insertError) {
+    console.error('[Actions] Failed to insert ota_job:', insertError);
+    return { error: `Database error: ${insertError.message}` };
+  }
+
+  // 5. Publish MQTT OTA command
+  const { mqttPublisher } = await import('@/lib/mqttPublisher');
+  const published = await mqttPublisher.publishOtaCommand(deviceId, targetVer, release.firmware_url);
+  if (!published) {
+    // Fail job in database immediately
+    await supabase
+      .from('ota_jobs')
+      .update({ status: 'FAILED' })
+      .eq('id', jobId);
+      
+    return { error: 'MQTT publication failed. Cloud could not reach the broker.' };
+  }
+
+  // 6. Log event in device_events
+  await supabase
+    .from('device_events')
+    .insert({
+      device_id: deviceId,
+      event_type: 'OTA_CMD',
+      payload: { jobId, version: targetVer, url: release.firmware_url },
+      source: 'CLOUD_DASHBOARD'
+    });
+
+  revalidatePath('/dashboard');
+  return { success: true, jobId };
+}

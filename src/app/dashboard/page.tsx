@@ -123,6 +123,14 @@ export default async function DashboardPage() {
     .eq('claimed', false)
     .order('device_id');
 
+  // Fetch the latest firmware release if any exists
+  const { data: latestRelease } = await supabase
+    .from('firmware_releases')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
   // Use empty arrays as fallback if query returns null
   const typedHomes     = homes            || [];
   const typedUnclaimed = unclaimedDevices || [];
@@ -309,6 +317,7 @@ export default async function DashboardPage() {
                           // Supabase returns relays as any[]; we cast it safely
                           relays: (device.relays as any[]) ?? [],
                         }}
+                        latestRelease={latestRelease}
                       />
                     ))}
                   </div>

@@ -180,6 +180,43 @@ class MqttPublisher {
       });
     });
   }
+
+  /**
+   * publishOtaCommand(deviceId, version, url)
+   * ----------------------------------------
+   * Publishes an OTA firmware update trigger command to home/{deviceId}/ota.
+   *
+   * @param deviceId Identifier of the target device
+   * @param version  Target semantic version (e.g. "1.0.1")
+   * @param url      HTTPS URL to download the firmware binary
+   * @returns        Promise resolving to "ota_triggered" on success, or null on error
+   */
+  public publishOtaCommand(
+    deviceId: string,
+    version: string,
+    url: string
+  ): Promise<string | null> {
+    const client = this.connect();
+    const topic = `home/${deviceId}/ota`;
+    const payloadObject = {
+      version: version,
+      url: url
+    };
+
+    const payloadString = JSON.stringify(payloadObject);
+
+    return new Promise((resolve) => {
+      client.publish(topic, payloadString, { qos: 1 }, (error) => {
+        if (error) {
+          console.error(`[MQTT Publisher] Failed to publish OTA command to ${topic}:`, error);
+          resolve(null);
+        } else {
+          console.log(`[MQTT Publisher] Published OTA command to [${topic}]: ${payloadString}`);
+          resolve("ota_triggered");
+        }
+      });
+    });
+  }
 }
 
 // Export singleton instance

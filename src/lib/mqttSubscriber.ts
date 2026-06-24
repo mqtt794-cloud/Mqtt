@@ -87,8 +87,9 @@ class MqttSubscriber {
       this._client?.subscribe('home/+/state', { qos: 1 });
       this._client?.subscribe('home/+/ack', { qos: 1 });
       this._client?.subscribe('home/+/config_state', { qos: 1 });
+      this._client?.subscribe('home/+/ota_status', { qos: 1 });
 
-      console.log('[MQTT Subscriber] Subscribed to status, state, config_state, and ack wildcards.');
+      console.log('[MQTT Subscriber] Subscribed to status, state, config_state, ota_status, and ack wildcards.');
     });
 
     this._client.on('message', async (topic, message) => {
@@ -125,6 +126,8 @@ class MqttSubscriber {
       await this._handleAck(deviceId, payload);
     } else if (subTopic === 'config_state') {
       await this._handleConfigState(deviceId, payload);
+    } else if (subTopic === 'ota_status') {
+      await this._handleOtaStatus(deviceId, payload);
     }
   }
 
@@ -371,6 +374,73 @@ class MqttSubscriber {
       .insert({
         device_id: deviceId,
         event_type: 'CONFIG_SNAPSHOT',
+        payload: payload,
+        source: 'MQTT'
+      });
+  }
+
+  /**
+   * _handleOtaStatus(deviceId, payload)
+   * ----------------------------------
+   * Processes the device's progress notifications during OTA update steps.
+   * Expected payload shapes:
+   *   {"status": "DOWNLOADING", "progress": 25}
+   *   {"status": "INSTALLING"}
+   *   {"status": "SUCCESS"}
+   *   {"status": "FAILED", "error": "Connection timed out"}
+   */
+  private async _handleOtaStatus(deviceId: string, payload: any) {
+    console.log(`[MQTT Subscriber] OTA status from ${deviceId}:`, payload);
+
+    const status = payload.status;
+    const progress = typeof payload.progress === 'number' ? payload.progress : 0;
+    const errorMsg = payload.error || null;
+
+    if (!status) {
+      console.error(`[MQTT Subscriber] Invalid ota_status message: missing status field`);
+      return;
+    }
+
+    // 1. Locate the latest non-finalized OTA job for this device
+    const { data: activeJob, error: queryError } = await supabaseAdmin
+      .from('ota_jobs')
+      .select('*')
+      .eq('device_id', deviceId)
+      .in('status', ['PENDING', 'DOWNLOADING', 'INSTALLING'])
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (queryError) {
+      console.error(`[MQTT Subscriber] Failed to query active ota_jobs:`, queryError.message);
+    }
+
+    if (activeJob) {
+      // 2. Update the active job status
+      const { error: updateError } = await supabaseAdmin
+        .from('ota_jobs')
+        .update({
+          status: status,
+          progress: progress,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', activeJob.id);
+
+      if (updateError) {
+        console.error(`[MQTT Subscriber] Failed to update ota_jobs status:`, updateError.message);
+      } else {
+        console.log(`[MQTT Subscriber] Updated OTA job ${activeJob.id} to ${status} (${progress}%)`);
+      }
+    } else {
+      console.warn(`[MQTT Subscriber] Received ota_status update but no active OTA job found for device ${deviceId}`);
+    }
+
+    // 3. Log the status event in device_events
+    await supabaseAdmin
+      .from('device_events')
+      .insert({
+        device_id: deviceId,
+        event_type: 'OTA_STATUS',
         payload: payload,
         source: 'MQTT'
       });
