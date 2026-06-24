@@ -111,6 +111,11 @@ export default async function DashboardPage() {
   console.log("Homes Count:", homes?.length);
   console.log("=====================================");
 
+  if (error) {
+    console.error("[Dashboard] Database query failed:", error);
+    throw new Error(`Database query failed: ${error.message} (code: ${error.code})`);
+  }
+
   // Fetch unclaimed devices so ClaimDeviceForm can show a dropdown
   const { data: unclaimedDevices } = await supabase
     .from('device_registry')
