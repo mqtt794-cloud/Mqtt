@@ -28,11 +28,12 @@ export default function ClaimDeviceForm({ homes, unclaimedDevices }: ClaimDevice
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    const form = event.currentTarget;
     setLoading(true);
     setError(null);
     setSuccess(false);
 
-    const formData = new FormData(event.currentTarget);
+    const formData = new FormData(form);
     const homeId = formData.get('homeId') as string;
     const deviceId = formData.get('deviceId') as string;
     const secret = formData.get('secret') as string;
@@ -45,7 +46,7 @@ export default function ClaimDeviceForm({ homes, unclaimedDevices }: ClaimDevice
       } else {
         setSuccess(true);
         // Reset the form
-        event.currentTarget.reset();
+        form.reset();
       }
     } catch (err: any) {
       setError(err.message || 'An unexpected error occurred.');

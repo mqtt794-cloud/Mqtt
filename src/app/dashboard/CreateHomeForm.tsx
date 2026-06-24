@@ -16,10 +16,11 @@ export default function CreateHomeForm() {
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    const form = event.currentTarget;
     setLoading(true);
     setError(null);
 
-    const formData = new FormData(event.currentTarget);
+    const formData = new FormData(form);
     const name = formData.get('name') as string;
 
     try {
@@ -27,7 +28,7 @@ export default function CreateHomeForm() {
       if (res?.error) {
         setError(res.error);
       } else {
-        event.currentTarget.reset();
+        form.reset();
       }
     } catch (err: any) {
       setError(err.message || 'An unexpected error occurred.');
