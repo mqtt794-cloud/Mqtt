@@ -66,7 +66,7 @@ CREATE TABLE IF NOT EXISTS device_events (
 --  SHA-256 Hash of 'X7K29A' is: 301df2220b22a0753066d7ea8941097fa620e980f74577884df24a3e795c64b6
 -- ─────────────────────────────────────────────────────────────────────────────
 INSERT INTO device_registry (device_id, device_secret_hash, model, claimed)
-VALUES ('ESP001', '301df2220b22a0753066d7ea8941097fa620e980f74577884df24a3e795c64b6', '4CH_RELAY', false)
+VALUES ('ESP001', '301df2220b22a0753066d7ea8941097fa620e980f74577884df24a3e795c64b6', '2CH_RELAY', false)
 ON CONFLICT (device_id) DO NOTHING;
 
 -- 6. OAUTH CODES

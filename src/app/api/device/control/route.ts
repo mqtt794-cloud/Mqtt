@@ -36,21 +36,17 @@ export async function POST(request: NextRequest) {
 
     if (!deviceId || typeof relay !== 'number' || typeof state !== 'boolean') {
       return NextResponse.json(
-        { error: 'Invalid parameters. Required: deviceId (string), relay (number 1-4), state (boolean).' },
+        { error: 'Invalid parameters. Required: deviceId (string), relay (number), state (boolean).' },
         { status: 400 }
       );
     }
 
-    if (relay < 1 || relay > 4) {
-      return NextResponse.json({ error: 'Relay number must be between 1 and 4.' }, { status: 400 });
-    }
-
     const supabase = await createClientOnServer();
 
-    // 3. Verify device ownership under static 'admin' profile
+    // 3. Verify device ownership under static 'admin' profile and retrieve model
     const { data: deviceRecord, error: queryError } = await supabase
       .from('devices')
-      .select('device_id, homes(user_id)')
+      .select('device_id, model, homes(user_id)')
       .eq('device_id', deviceId)
       .single();
 
@@ -61,6 +57,15 @@ export async function POST(request: NextRequest) {
     const homes = deviceRecord.homes as any;
     if (homes?.user_id !== 'admin') {
       return NextResponse.json({ error: 'Access denied. You do not own this device.' }, { status: 403 });
+    }
+
+    // Dynamic model-based validation
+    const maxRelays = deviceRecord.model === '2CH_RELAY' ? 2 : 4;
+    if (relay < 1 || relay > maxRelays) {
+      return NextResponse.json(
+        { error: `Relay number must be between 1 and ${maxRelays}.` },
+        { status: 400 }
+      );
     }
 
     // 4. Publish control command via MQTT Publisher

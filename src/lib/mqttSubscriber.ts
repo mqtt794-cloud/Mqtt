@@ -161,6 +161,14 @@ class MqttSubscriber {
         if (existing.device_secret_hash !== incomingHash) {
           console.warn(`[SECURITY]\nSecret mismatch detected\nStored: ${existing.device_secret_hash}\nIncoming: ${incomingHash}`);
         }
+        // Auto-upgrade model registry
+        if (payload.model && existing.model !== payload.model) {
+          console.log(`[DISCOVERY] Upgrading device model from ${existing.model} to ${payload.model} for ${deviceId}`);
+          await supabaseAdmin
+            .from('device_registry')
+            .update({ model: payload.model })
+            .eq('device_id', deviceId);
+        }
       } else {
         // New device discovery: Insert incoming secret from firmware
         const { error: insertError } = await supabaseAdmin
@@ -204,6 +212,18 @@ class MqttSubscriber {
           model: payload.model
         })
         .eq('device_id', deviceId);
+
+      // Automatic Relay Table Cleanup for 2-channel hardware simplification
+      if (payload.model === '2CH_RELAY') {
+        const { error: cleanupError } = await supabaseAdmin
+          .from('relays')
+          .delete()
+          .eq('device_id', deviceId)
+          .gt('relay_number', 2);
+        if (cleanupError) {
+          console.error(`[MQTT Subscriber] Failed to cleanup ghost relays for ${deviceId}:`, cleanupError.message);
+        }
+      }
     }
 
     // 3. Log event into device_events
@@ -229,16 +249,21 @@ class MqttSubscriber {
     //    .maybeSingle() returns null (no error) when zero rows match.
     const { data: claimedDevice } = await supabaseAdmin
       .from('devices')
-      .select('id')
+      .select('id, model')
       .eq('device_id', deviceId)
       .maybeSingle();
 
     if (!claimedDevice) return;
 
-    // 2. Loop through r1..r4 in payload and update the relays table
+    // 2. Loop through r1..r4 in payload and update the relays table (respect model limits)
+    const maxRelays = claimedDevice.model === '2CH_RELAY' ? 2 : 4;
     for (let i = 1; i <= 4; i++) {
       const stateKey = `r${i}`;
       if (payload[stateKey] !== undefined) {
+        if (i > maxRelays) {
+          console.warn(`[MQTT] Invalid relay number: ${i} for device ${deviceId} (model: ${claimedDevice.model})`);
+          continue;
+        }
         await supabaseAdmin
           .from('relays')
           .update({ current_state: payload[stateKey] })

@@ -144,13 +144,17 @@ export async function claimDevice(
     return { error: insertDeviceError.message };
   }
 
-  // 6. Seed 4 relays in relays table
-  const relayRows = [
-    { device_id: deviceId, relay_number: 1, relay_name: 'Relay 1', current_state: false },
-    { device_id: deviceId, relay_number: 2, relay_name: 'Relay 2', current_state: false },
-    { device_id: deviceId, relay_number: 3, relay_name: 'Relay 3', current_state: false },
-    { device_id: deviceId, relay_number: 4, relay_name: 'Relay 4', current_state: false },
-  ];
+  // 6. Seed relays in relays table (2 relays for 2CH_RELAY, 4 relays for 4CH_RELAY)
+  const numRelaysToSeed = registryItem.model === '2CH_RELAY' ? 2 : 4;
+  const relayRows = [];
+  for (let i = 1; i <= numRelaysToSeed; i++) {
+    relayRows.push({
+      device_id: deviceId,
+      relay_number: i,
+      relay_name: `Relay ${i}`,
+      current_state: false
+    });
+  }
 
   const { error: seedRelaysError } = await supabase
     .from('relays')

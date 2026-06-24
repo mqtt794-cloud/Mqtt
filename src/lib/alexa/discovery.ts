@@ -100,6 +100,11 @@ export async function getAlexaEndpoints(userId: string): Promise<AlexaEndpoint[]
       const relays = (dev.relays as any[]) || [];
 
       for (const relay of relays) {
+        // Alexa Discovery Update: Skip channels 3 and 4 for 2CH devices
+        if (dev.model === '2CH_RELAY' && relay.relay_number > 2) {
+          continue;
+        }
+
         // Construct a unique endpoint ID for Alexa, e.g. "ESP001_1" for relay 1 on device ESP001
         const endpointId = `${dev.device_id}_${relay.relay_number}`;
 

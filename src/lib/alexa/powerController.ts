@@ -54,7 +54,7 @@ export async function handleAlexaPowerControl(
     //    We also select the device's online status.
     const { data: deviceRecord, error: queryError } = await supabaseAdmin
       .from('devices')
-      .select('device_id, online, homes(user_id)')
+      .select('device_id, online, model, homes(user_id)')
       .eq('device_id', deviceId)
       .single();
 
@@ -67,6 +67,13 @@ export async function handleAlexaPowerControl(
     if (homes?.user_id !== userId) {
       console.error(`[Alexa PowerController] Security alert: User ${userId} does not own device ${deviceId}.`);
       return { success: false, online: false };
+    }
+
+    // Dynamic model-based relay number validation
+    const maxRelays = deviceRecord.model === '2CH_RELAY' ? 2 : 4;
+    if (relayNumber < 1 || relayNumber > maxRelays) {
+      console.error(`[Alexa PowerController] Invalid relay number ${relayNumber} for model ${deviceRecord.model}`);
+      return { success: false, online: deviceRecord.online };
     }
 
     // 2. Publish command payload to HiveMQ Cloud.
