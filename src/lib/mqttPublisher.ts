@@ -108,6 +108,78 @@ class MqttPublisher {
       });
     });
   }
+
+  /**
+   * publishConfigCommand(deviceId, relayNumber, mode)
+   * ------------------------------------------------
+   * Publishes a configuration mode change command for a specific relay channel.
+   *
+   * @param deviceId    Identifier of the target device
+   * @param relayNumber Relay channel number
+   * @param mode        Target switch mode ('SMART' | 'CLASSIC' | 'DETACHED')
+   * @returns           Promise resolving to the generated cmdId, or null on error
+   */
+  public publishConfigCommand(
+    deviceId: string,
+    relayNumber: number,
+    mode: string
+  ): Promise<string | null> {
+    const client = this.connect();
+    const topic = `home/${deviceId}/config`;
+    const cmdId = `cfg_${crypto.randomUUID()}`;
+
+    const payloadObject = {
+      cmdId: cmdId,
+      relay: relayNumber,
+      mode: mode
+    };
+
+    const payloadString = JSON.stringify(payloadObject);
+
+    return new Promise((resolve) => {
+      client.publish(topic, payloadString, { qos: 1 }, (error) => {
+        if (error) {
+          console.error(`[MQTT Publisher] Failed to publish config command ${cmdId} to ${topic}:`, error);
+          resolve(null);
+        } else {
+          console.log(`[MQTT Publisher] Published config command [${cmdId}] to [${topic}]: ${payloadString}`);
+          resolve(cmdId);
+        }
+      });
+    });
+  }
+
+  /**
+   * publishRefreshConfigCommand(deviceId)
+   * ------------------------------------
+   * Publishes a get_config command to request a full configuration refresh from the device.
+   *
+   * @param deviceId Identifier of the target device
+   * @returns        Promise resolving to a status string on success, or null on error
+   */
+  public publishRefreshConfigCommand(
+    deviceId: string
+  ): Promise<string | null> {
+    const client = this.connect();
+    const topic = `home/${deviceId}/config`;
+    const payloadObject = {
+      type: "get_config"
+    };
+
+    const payloadString = JSON.stringify(payloadObject);
+
+    return new Promise((resolve) => {
+      client.publish(topic, payloadString, { qos: 1 }, (error) => {
+        if (error) {
+          console.error(`[MQTT Publisher] Failed to publish refresh config command to ${topic}:`, error);
+          resolve(null);
+        } else {
+          console.log(`[MQTT Publisher] Published config refresh command to [${topic}]: ${payloadString}`);
+          resolve("refresh_triggered");
+        }
+      });
+    });
+  }
 }
 
 // Export singleton instance

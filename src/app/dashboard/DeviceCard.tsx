@@ -28,6 +28,7 @@
 
 import RelayCard from './RelayCard';
 import RenameRelayButton from './RenameRelayButton';
+import RefreshConfigButton from './RefreshConfigButton';
 
 // --------------------------------------------------------------------------
 // Type definitions — describe the shape of data this component expects
@@ -38,6 +39,9 @@ interface Relay {
   relay_number: number;
   relay_name: string;
   current_state: boolean;
+  switch_mode: string;
+  desired_switch_mode: string;
+  config_status: string;
 }
 
 interface Device {
@@ -115,26 +119,30 @@ export default function DeviceCard({ device }: DeviceCardProps) {
           </div>
         </div>
 
-        {/* RIGHT: Online/Offline badge */}
-        <span
-          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border flex-shrink-0 ${
-            device.online
-              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-              : 'bg-slate-800 text-slate-500 border-slate-700'
-          }`}
-        >
-          {/*
-           * Status dot.
-           * bg-emerald-400: bright green when online.
-           * bg-slate-600: grey when offline.
-           */}
+        {/* RIGHT: Online/Offline badge + Sync button */}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <RefreshConfigButton deviceId={device.device_id} />
+          
           <span
-            className={`w-1.5 h-1.5 rounded-full ${
-              device.online ? 'bg-emerald-400' : 'bg-slate-600'
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border ${
+              device.online
+                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                : 'bg-slate-800 text-slate-500 border-slate-700'
             }`}
-          />
-          {device.online ? 'Online' : 'Offline'}
-        </span>
+          >
+            {/*
+             * Status dot.
+             * bg-emerald-400: bright green when online.
+             * bg-slate-600: grey when offline.
+             */}
+            <span
+              className={`w-1.5 h-1.5 rounded-full ${
+                device.online ? 'bg-emerald-400' : 'bg-slate-600'
+              }`}
+            />
+            {device.online ? 'Online' : 'Offline'}
+          </span>
+        </div>
       </div>
 
       {/* ── Device Metadata Row ───────────────────────────────────────── */}
@@ -205,6 +213,9 @@ export default function DeviceCard({ device }: DeviceCardProps) {
                 relayNumber={relay.relay_number}
                 relayName={relay.relay_name}
                 currentState={relay.current_state}
+                switchMode={relay.switch_mode}
+                desiredSwitchMode={relay.desired_switch_mode}
+                configStatus={relay.config_status}
               />
             </div>
           ))}

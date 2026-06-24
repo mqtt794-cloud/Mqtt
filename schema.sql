@@ -46,6 +46,9 @@ CREATE TABLE IF NOT EXISTS relays (
   relay_number INT NOT NULL CHECK (relay_number BETWEEN 1 AND 4),
   relay_name TEXT NOT NULL,
   current_state BOOLEAN NOT NULL DEFAULT FALSE,
+  switch_mode TEXT NOT NULL DEFAULT 'SMART' CHECK (switch_mode IN ('SMART', 'CLASSIC', 'DETACHED')),
+  desired_switch_mode TEXT NOT NULL DEFAULT 'SMART' CHECK (desired_switch_mode IN ('SMART', 'CLASSIC', 'DETACHED')),
+  config_status TEXT NOT NULL DEFAULT 'SYNCED' CHECK (config_status IN ('SYNCED', 'PENDING')),
   created_at TIMESTAMPTZ DEFAULT now(),
   UNIQUE(device_id, relay_number)
 );

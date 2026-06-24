@@ -213,3 +213,160 @@ export async function renameRelay(relayId: string, newName: string) {
   revalidatePath('/dashboard');
   return { success: true };
 }
+
+/**
+ * getCurrentUserId()
+ * -----------------
+ * Resolves the dynamic session user. For static auth, this returns 'admin' if authenticated.
+ */
+export async function getCurrentUserId(): Promise<string | null> {
+  const isAuthed = await checkAuth();
+  return isAuthed ? 'admin' : null;
+}
+
+/**
+ * updateRelayMode(deviceId, relayNumber, mode)
+ * -------------------------------------------
+ * Triggers a switch mode change for a specific relay on the device.
+ */
+export async function updateRelayMode(
+  deviceId: string,
+  relayNumber: number,
+  mode: 'SMART' | 'CLASSIC' | 'DETACHED'
+) {
+  if (!deviceId || !relayNumber || !mode) {
+    return { error: 'All fields are required.' };
+  }
+
+  const userId = await getCurrentUserId();
+  if (!userId) {
+    return { error: 'Access denied: Authentication required.' };
+  }
+
+  const supabase = await createClientOnServer();
+
+  // Verify ownership
+  const { data: deviceRecord } = await supabase
+    .from('devices')
+    .select('device_id, model, homes(user_id)')
+    .eq('device_id', deviceId)
+    .single();
+
+  if (!deviceRecord) {
+    return { error: 'Device not found.' };
+  }
+
+  const homes = deviceRecord.homes as any;
+  if (homes?.user_id !== userId) {
+    return { error: 'Access denied: you do not own this device.' };
+  }
+
+  // Validate relay number based on device model
+  const maxRelays = deviceRecord.model === '2CH_RELAY' ? 2 : 4;
+  if (relayNumber < 1 || relayNumber > maxRelays) {
+    return { error: `Invalid relay number for model ${deviceRecord.model}.` };
+  }
+
+  // Import the MQTT publisher dynamically
+  const { mqttPublisher } = await import('@/lib/mqttPublisher');
+
+  // 1. Publish command via MQTT
+  const cmdId = await mqttPublisher.publishConfigCommand(deviceId, relayNumber, mode);
+  if (!cmdId) {
+    return { error: 'MQTT publication failed. Device config mode not updated.' };
+  }
+
+  // 2. Database update: set desired_switch_mode and config_status
+  const { error: dbError } = await supabase
+    .from('relays')
+    .update({
+      desired_switch_mode: mode,
+      config_status: 'PENDING'
+    })
+    .eq('device_id', deviceId)
+    .eq('relay_number', relayNumber);
+
+  if (dbError) {
+    console.error('[Dashboard Actions] updateRelayMode DB update failed:', dbError);
+    return { error: `Database update failed: ${dbError.message}` };
+  }
+
+  // 3. Log event into device_events
+  await supabase
+    .from('device_events')
+    .insert({
+      device_id: deviceId,
+      event_type: 'CONFIG_CMD',
+      payload: { cmdId, relay: relayNumber, mode },
+      source: 'CLOUD_DASHBOARD'
+    });
+
+  revalidatePath('/dashboard');
+  return { success: true };
+}
+
+/**
+ * refreshDeviceConfig(deviceId)
+ * ----------------------------
+ * Requests a full configuration refresh from the physical ESP device.
+ */
+export async function refreshDeviceConfig(deviceId: string) {
+  if (!deviceId) {
+    return { error: 'Device ID is required.' };
+  }
+
+  const userId = await getCurrentUserId();
+  if (!userId) {
+    return { error: 'Access denied: Authentication required.' };
+  }
+
+  const supabase = await createClientOnServer();
+
+  // Verify ownership
+  const { data: deviceRecord } = await supabase
+    .from('devices')
+    .select('device_id, homes(user_id)')
+    .eq('device_id', deviceId)
+    .single();
+
+  if (!deviceRecord) {
+    return { error: 'Device not found.' };
+  }
+
+  const homes = deviceRecord.homes as any;
+  if (homes?.user_id !== userId) {
+    return { error: 'Access denied: you do not own this device.' };
+  }
+
+  const { mqttPublisher } = await import('@/lib/mqttPublisher');
+
+  // 1. Publish MQTT refresh request
+  const result = await mqttPublisher.publishRefreshConfigCommand(deviceId);
+  if (!result) {
+    return { error: 'MQTT publication failed. Refresh command not sent.' };
+  }
+
+  // 2. Set all relays config_status to PENDING
+  const { error: dbError } = await supabase
+    .from('relays')
+    .update({ config_status: 'PENDING' })
+    .eq('device_id', deviceId);
+
+  if (dbError) {
+    console.error('[Dashboard Actions] refreshDeviceConfig DB update failed:', dbError);
+    return { error: `Database update failed: ${dbError.message}` };
+  }
+
+  // 3. Log event
+  await supabase
+    .from('device_events')
+    .insert({
+      device_id: deviceId,
+      event_type: 'CONFIG_REFRESH_CMD',
+      payload: { action: 'get_config' },
+      source: 'CLOUD_DASHBOARD'
+    });
+
+  revalidatePath('/dashboard');
+  return { success: true };
+}

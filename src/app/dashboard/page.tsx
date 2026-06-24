@@ -95,7 +95,10 @@ export default async function DashboardPage() {
           id,
           relay_number,
           relay_name,
-          current_state
+          current_state,
+          switch_mode,
+          desired_switch_mode,
+          config_status
         )
       )
     `)

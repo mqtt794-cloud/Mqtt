@@ -86,8 +86,9 @@ class MqttSubscriber {
       this._client?.subscribe('home/+/status', { qos: 1 });
       this._client?.subscribe('home/+/state', { qos: 1 });
       this._client?.subscribe('home/+/ack', { qos: 1 });
+      this._client?.subscribe('home/+/config_state', { qos: 1 });
 
-      console.log('[MQTT Subscriber] Subscribed to status, state, and ack wildcards.');
+      console.log('[MQTT Subscriber] Subscribed to status, state, config_state, and ack wildcards.');
     });
 
     this._client.on('message', async (topic, message) => {
@@ -122,6 +123,8 @@ class MqttSubscriber {
       await this._handleState(deviceId, payload);
     } else if (subTopic === 'ack') {
       await this._handleAck(deviceId, payload);
+    } else if (subTopic === 'config_state') {
+      await this._handleConfigState(deviceId, payload);
     }
   }
 
@@ -297,6 +300,77 @@ class MqttSubscriber {
       .insert({
         device_id: deviceId,
         event_type: 'COMMAND_ACK',
+        payload: payload,
+        source: 'MQTT'
+      });
+  }
+
+  /**
+   * _handleConfigState(deviceId, payload)
+   * ------------------------------------
+   * Processes the device switch configuration state published on home/+/config_state.
+   */
+  private async _handleConfigState(deviceId: string, payload: any) {
+    console.log(`[MQTT Subscriber] Config state from ${deviceId}:`, payload);
+
+    // 1. Verify device is claimed and retrieve model
+    const { data: claimedDevice } = await supabaseAdmin
+      .from('devices')
+      .select('id, model')
+      .eq('device_id', deviceId)
+      .maybeSingle();
+
+    if (!claimedDevice) {
+      console.warn(`[MQTT Subscriber] Config state received for unclaimed/unknown device: ${deviceId}`);
+      return;
+    }
+
+    // 2. Validate channels format
+    const channels = payload.channels;
+    if (!Array.isArray(channels)) {
+      console.error(`[MQTT Subscriber] Invalid config_state payload: 'channels' is not an array`);
+      return;
+    }
+
+    const expectedCount = claimedDevice.model === '2CH_RELAY' ? 2 : 4;
+    if (channels.length !== expectedCount) {
+      console.error(`[CONFIG] Invalid channel count: expected ${expectedCount}, got ${channels.length}`);
+      return;
+    }
+
+    // 3. Update database for each channel
+    for (const channel of channels) {
+      const relayNumber = channel.relay;
+      const mode = channel.mode;
+
+      if (typeof relayNumber !== 'number' || typeof mode !== 'string') {
+        console.error(`[MQTT Subscriber] Invalid channel item in config_state payload:`, channel);
+        continue;
+      }
+
+      if (relayNumber < 1 || relayNumber > expectedCount) {
+        console.error(`[MQTT Subscriber] Invalid relay number ${relayNumber} in config_state for model ${claimedDevice.model}`);
+        continue;
+      }
+
+      // Sync switch_mode and desired_switch_mode, set config_status to SYNCED
+      await supabaseAdmin
+        .from('relays')
+        .update({
+          switch_mode: mode,
+          desired_switch_mode: mode,
+          config_status: 'SYNCED'
+        })
+        .eq('device_id', deviceId)
+        .eq('relay_number', relayNumber);
+    }
+
+    // 4. Log event
+    await supabaseAdmin
+      .from('device_events')
+      .insert({
+        device_id: deviceId,
+        event_type: 'CONFIG_SNAPSHOT',
         payload: payload,
         source: 'MQTT'
       });
