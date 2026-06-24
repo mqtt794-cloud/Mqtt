@@ -194,13 +194,15 @@ class MqttPublisher {
   public publishOtaCommand(
     deviceId: string,
     version: string,
-    url: string
+    url: string,
+    sha256: string
   ): Promise<string | null> {
     const client = this.connect();
     const topic = `home/${deviceId}/ota`;
     const payloadObject = {
       version: version,
-      url: url
+      url: url,
+      sha256: sha256
     };
 
     const payloadString = JSON.stringify(payloadObject);

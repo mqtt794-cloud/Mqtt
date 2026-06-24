@@ -409,7 +409,7 @@ export async function triggerOtaUpdate(deviceId: string, releaseId: string) {
   // 1. Verify device ownership
   const { data: deviceRecord } = await supabase
     .from('devices')
-    .select('device_id, firmware_version, homes(user_id)')
+    .select('device_id, firmware_version, model, homes(user_id)')
     .eq('device_id', deviceId)
     .single();
 
@@ -431,6 +431,11 @@ export async function triggerOtaUpdate(deviceId: string, releaseId: string) {
 
   if (!release) {
     return { error: 'Firmware release not found.' };
+  }
+
+  // Verify model compatibility
+  if (deviceRecord.model !== release.compatible_model) {
+    return { error: `Upgrade blocked: firmware release is only compatible with model ${release.compatible_model}, but device model is ${deviceRecord.model}.` };
   }
 
   // 3. Perform safety semver comparison
@@ -459,7 +464,7 @@ export async function triggerOtaUpdate(deviceId: string, releaseId: string) {
 
   // 5. Publish MQTT OTA command
   const { mqttPublisher } = await import('@/lib/mqttPublisher');
-  const published = await mqttPublisher.publishOtaCommand(deviceId, targetVer, release.firmware_url);
+  const published = await mqttPublisher.publishOtaCommand(deviceId, targetVer, release.firmware_url, release.sha256);
   if (!published) {
     // Fail job in database immediately
     await supabase

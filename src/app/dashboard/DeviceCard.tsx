@@ -30,6 +30,7 @@ import RelayCard from './RelayCard';
 import RenameRelayButton from './RenameRelayButton';
 import RefreshConfigButton from './RefreshConfigButton';
 import OtaUpdatePanel from './OtaUpdatePanel';
+import { createClientOnServer } from '@/lib/supabase';
 
 // --------------------------------------------------------------------------
 // Type definitions — describe the shape of data this component expects
@@ -66,7 +67,6 @@ interface FirmwareRelease {
 
 interface DeviceCardProps {
   device: Device;
-  latestRelease: FirmwareRelease | null;
 }
 
 // --------------------------------------------------------------------------
@@ -92,7 +92,16 @@ function formatLastSeen(isoString: string | null): string {
 // --------------------------------------------------------------------------
 // Component
 // --------------------------------------------------------------------------
-export default function DeviceCard({ device, latestRelease }: DeviceCardProps) {
+export default async function DeviceCard({ device }: DeviceCardProps) {
+  const supabase = await createClientOnServer();
+  const { data: latestRelease } = await supabase
+    .from('firmware_releases')
+    .select('id, version, firmware_url, release_notes')
+    .eq('compatible_model', device.model || '2CH_RELAY')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
   // Sort relays by their number (1, 2, 3, 4) so they always appear in order
   const sortedRelays = [...device.relays].sort(
     (a, b) => a.relay_number - b.relay_number

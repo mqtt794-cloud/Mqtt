@@ -77,6 +77,17 @@ export default async function DashboardPage() {
    */
   const supabase = await createClientOnServer();
 
+  // OTA Timeout Watchdog: Fail any job that hasn't seen updates for 10 minutes
+  try {
+    await supabase
+      .from('ota_jobs')
+      .update({ status: 'FAILED' })
+      .in('status', ['PENDING', 'DOWNLOADING', 'INSTALLING'])
+      .lt('updated_at', new Date(Date.now() - 10 * 60 * 1000).toISOString());
+  } catch (watchdogErr) {
+    console.error('[Dashboard Watchdog] Error cleaning up stale OTA jobs:', watchdogErr);
+  }
+
   const { data: homes, error } = await supabase
     .from('homes')
     .select(`
@@ -123,13 +134,7 @@ export default async function DashboardPage() {
     .eq('claimed', false)
     .order('device_id');
 
-  // Fetch the latest firmware release if any exists
-  const { data: latestRelease } = await supabase
-    .from('firmware_releases')
-    .select('*')
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  // latestRelease query removed - now fetched dynamically in DeviceCard.tsx
 
   // Use empty arrays as fallback if query returns null
   const typedHomes     = homes            || [];
@@ -317,7 +322,6 @@ export default async function DashboardPage() {
                           // Supabase returns relays as any[]; we cast it safely
                           relays: (device.relays as any[]) ?? [],
                         }}
-                        latestRelease={latestRelease}
                       />
                     ))}
                   </div>
