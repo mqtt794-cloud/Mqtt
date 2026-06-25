@@ -10,6 +10,7 @@
  * UX/DESIGN DECISIONS:
  *   - Sleek dark theme matching our smart home aesthetic.
  *   - Glassmorphic card overlay with dynamic validation feedbacks.
+ *   - Mobile-first with large touch targets.
  * =============================================================================
  */
 
@@ -17,7 +18,7 @@
 
 import { useState } from 'react';
 import { login, signup } from './actions';
-import { Shield, Sparkles } from 'lucide-react';
+import { Shield, Sparkles, Cpu } from 'lucide-react';
 
 export default function LoginPage() {
   const [isSignUp, setIsSignUp] = useState(false);
@@ -57,16 +58,17 @@ export default function LoginPage() {
   return (
     <main className="min-h-screen bg-slate-950 flex flex-col justify-center items-center p-4 relative overflow-hidden">
       {/* Background ambient glowing details */}
-      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-indigo-900/10 rounded-full blur-3xl" />
-      <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-emerald-950/10 rounded-full blur-3xl" />
+      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-indigo-900/10 rounded-full blur-3xl animate-fade-in" />
+      <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-emerald-950/10 rounded-full blur-3xl animate-fade-in" />
 
-      <div className="w-full max-w-md z-10">
+      <div className="w-full max-w-md z-10 animate-slide-up">
         {/* Header Branding */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center p-3 bg-indigo-950/50 rounded-2xl border border-indigo-500/20 mb-4">
             <Shield className="w-8 h-8 text-indigo-400" />
           </div>
-          <h1 className="text-3xl font-extrabold text-white tracking-tight">
+          <h1 className="text-3xl font-extrabold text-white tracking-tight flex items-center justify-center gap-2">
+            <Cpu className="w-7 h-7 text-indigo-400" />
             SmartHome <span className="text-indigo-400">Cloud</span>
           </h1>
           <p className="text-slate-400 mt-2 text-sm">
@@ -75,12 +77,12 @@ export default function LoginPage() {
         </div>
 
         {/* Auth Glassmorphic Card */}
-        <div className="bg-slate-900/70 border border-slate-800 rounded-3xl p-8 backdrop-blur-xl shadow-2xl">
-          <form onSubmit={handleSubmit} className="space-y-6">
+        <div className="glass rounded-2xl p-6 sm:p-8 shadow-2xl">
+          <form onSubmit={handleSubmit} className="space-y-5">
             
             {/* Email Field */}
             <div>
-              <label htmlFor="email" className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+              <label htmlFor="email" className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
                 Email Address
               </label>
               <input
@@ -88,14 +90,14 @@ export default function LoginPage() {
                 name="email"
                 type="email"
                 required
-                className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors"
+                className="w-full px-4 py-3.5 bg-slate-950/80 border border-slate-800/80 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors text-sm"
                 placeholder="you@domain.com"
               />
             </div>
 
             {/* Password Field */}
             <div>
-              <label htmlFor="password" className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+              <label htmlFor="password" className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
                 Password
               </label>
               <input
@@ -103,21 +105,21 @@ export default function LoginPage() {
                 name="password"
                 type="password"
                 required
-                className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors"
+                className="w-full px-4 py-3.5 bg-slate-950/80 border border-slate-800/80 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors text-sm"
                 placeholder="••••••••"
               />
             </div>
 
             {/* Error Message */}
             {errorMessage && (
-              <div className="p-4 bg-red-950/30 border border-red-500/30 text-red-300 rounded-xl text-sm font-medium">
+              <div className="p-3.5 bg-red-950/30 border border-red-500/20 text-red-300 rounded-xl text-sm font-medium animate-slide-up">
                 {errorMessage}
               </div>
             )}
 
             {/* Success Message */}
             {successMessage && (
-              <div className="p-4 bg-emerald-950/30 border border-emerald-500/30 text-emerald-300 rounded-xl text-sm font-medium">
+              <div className="p-3.5 bg-emerald-950/30 border border-emerald-500/20 text-emerald-300 rounded-xl text-sm font-medium animate-slide-up">
                 {successMessage}
               </div>
             )}
@@ -126,7 +128,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-lg hover:shadow-indigo-500/20 active:bg-indigo-700 disabled:opacity-50 transition-all flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full py-3.5 px-4 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-lg hover:shadow-indigo-500/20 active:bg-indigo-700 disabled:opacity-50 transition-all flex items-center justify-center gap-2 cursor-pointer tap-highlight-none active-press touch-target text-sm"
             >
               {loading ? (
                 <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -147,7 +149,7 @@ export default function LoginPage() {
                 setErrorMessage(null);
                 setSuccessMessage(null);
               }}
-              className="text-slate-400 hover:text-white transition-colors cursor-pointer"
+              className="text-slate-400 hover:text-white transition-colors cursor-pointer tap-highlight-none"
             >
               {isSignUp ? 'Already have an account? Sign In' : "Don't have an account? Sign Up"}
             </button>

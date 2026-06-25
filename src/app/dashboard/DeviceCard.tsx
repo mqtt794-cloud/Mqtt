@@ -5,24 +5,17 @@
  *
  * WHAT THIS FILE DOES:
  *   Renders a complete card for one ESP device. Shows:
- *     - Device name (e.g. "Living Room Controller")
- *     - Device ID badge (e.g. "ESP001")
- *     - Online / Offline status indicator
- *     - Firmware version and last-seen timestamp
+ *     - Device name with premium typography
+ *     - Device ID badge and model label
+ *     - Online / Offline status indicator (StatusBadge)
+ *     - Firmware version, last-seen, and sync button
+ *     - Embedded OTA update panel
  *     - A list of RelayCard components — one for each relay channel
  *
  * WHY THIS IS A SERVER COMPONENT:
  *   This file does NOT have 'use client'. That means Next.js renders it on the
  *   server. It receives its data as "props" from the parent page.tsx, which
  *   already fetched everything from Supabase.
- *   The child RelayCard.tsx IS a client component (has 'use client') and handles
- *   the browser-side button interactions.
- *
- * BEGINNER NOTE — Props:
- *   "Props" (short for properties) are the inputs a component receives.
- *   In JSX you pass them like HTML attributes:
- *     <DeviceCard device={deviceObject} />
- *   Inside the function you receive them as the first argument.
  * =============================================================================
  */
 
@@ -30,6 +23,8 @@ import RelayCard from './RelayCard';
 import RenameRelayButton from './RenameRelayButton';
 import RefreshConfigButton from './RefreshConfigButton';
 import OtaUpdatePanel from './OtaUpdatePanel';
+import StatusBadge from '@/app/components/ui/StatusBadge';
+import { Cpu, Clock, Wifi } from 'lucide-react';
 
 // --------------------------------------------------------------------------
 // Type definitions — describe the shape of data this component expects
@@ -105,31 +100,24 @@ export default function DeviceCard({ device, latestRelease }: DeviceCardProps) {
   );
 
   return (
-    /*
-     * Card container.
-     * bg-slate-900: dark background.
-     * border border-slate-800: subtle border line.
-     * rounded-2xl: nicely rounded corners.
-     * p-5: padding inside the card.
-     */
-    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 flex flex-col gap-4">
+    <div className="bg-slate-900/80 border border-slate-800/60 rounded-2xl p-5 sm:p-6 flex flex-col gap-5 animate-fade-in shadow-xl shadow-black/10">
 
       {/* ── Device Header ─────────────────────────────────────────────── */}
-      <div className="flex items-start justify-between gap-3 flex-wrap">
+      <div className="flex items-start justify-between gap-3">
 
         {/* LEFT: device name + ID badge */}
-        <div>
-          <h3 className="text-base font-bold text-white leading-tight">
+        <div className="min-w-0">
+          <h3 className="text-lg font-bold text-white leading-tight truncate">
             {device.device_name}
           </h3>
-          <div className="flex items-center gap-2 mt-1">
+          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
             {/* Device ID chip — monospace font makes it look like a code tag */}
-            <code className="text-xs bg-slate-800 text-indigo-300 px-2 py-0.5 rounded-md border border-slate-700">
+            <code className="text-xs bg-slate-800/80 text-indigo-300 px-2 py-0.5 rounded-md border border-slate-700/60">
               {device.device_id}
             </code>
             {/* Model label */}
             {device.model && (
-              <span className="text-xs text-slate-500">{device.model}</span>
+              <span className="text-xs text-slate-500 font-medium">{device.model}</span>
             )}
           </div>
         </div>
@@ -137,45 +125,24 @@ export default function DeviceCard({ device, latestRelease }: DeviceCardProps) {
         {/* RIGHT: Online/Offline badge + Sync button */}
         <div className="flex items-center gap-2 flex-shrink-0">
           <RefreshConfigButton deviceId={device.device_id} />
-          
-          <span
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border ${
-              device.online
-                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                : 'bg-slate-800 text-slate-500 border-slate-700'
-            }`}
-          >
-            {/*
-             * Status dot.
-             * bg-emerald-400: bright green when online.
-             * bg-slate-600: grey when offline.
-             */}
-            <span
-              className={`w-1.5 h-1.5 rounded-full ${
-                device.online ? 'bg-emerald-400' : 'bg-slate-600'
-              }`}
-            />
-            {device.online ? 'Online' : 'Offline'}
-          </span>
+          <StatusBadge
+            variant={device.online ? 'online' : 'offline'}
+            label={device.online ? 'Online' : 'Offline'}
+          />
         </div>
       </div>
 
       {/* ── Device Metadata Row ───────────────────────────────────────── */}
-      {/*
-       * Shows firmware version and last-seen time.
-       * text-xs: extra small text.
-       * text-slate-500: muted grey colour.
-       */}
-      <div className="flex items-center gap-4 text-xs text-slate-500 border-t border-slate-800 pt-3">
-        <span>
-          Firmware:{' '}
+      <div className="flex items-center gap-4 sm:gap-5 text-xs text-slate-500 border-t border-slate-800/60 pt-3 flex-wrap">
+        <span className="flex items-center gap-1.5">
+          <Cpu className="w-3.5 h-3.5 text-slate-600" />
           <span className="text-slate-400 font-medium">
             {device.firmware_version ?? '—'}
-            {device.build_number ? ` (build ${device.build_number})` : ''}
+            {device.build_number ? ` (b${device.build_number})` : ''}
           </span>
         </span>
-        <span>
-          Last seen:{' '}
+        <span className="flex items-center gap-1.5">
+          <Clock className="w-3.5 h-3.5 text-slate-600" />
           <span className="text-slate-400 font-medium">
             {formatLastSeen(device.last_seen)}
           </span>
@@ -191,45 +158,25 @@ export default function DeviceCard({ device, latestRelease }: DeviceCardProps) {
 
       {/* ── Relay Channels ────────────────────────────────────────────── */}
       {sortedRelays.length === 0 ? (
-        /*
-         * Edge case: device has no relays in the database yet.
-         * This shouldn't happen after claiming, but we handle it gracefully.
-         */
-        <p className="text-xs text-slate-600 italic">
+        <p className="text-xs text-slate-600 italic text-center py-4">
           No relay channels found for this device.
         </p>
       ) : (
-        <div className="flex flex-col gap-2">
-          {/*
-           * Render one RelayCard per relay.
-           * We also render a RenameRelayButton next to each one.
-           */}
+        <div className="flex flex-col gap-4">
           {sortedRelays.map((relay) => (
-            /*
-             * key={relay.id}: React needs a unique "key" on each list item
-             * so it can efficiently update the list when data changes.
-             */
-            <div key={relay.id} className="flex flex-col gap-1">
+            <div key={relay.id} className="flex flex-col gap-1.5">
 
               {/* Relay name + rename button row */}
               <div className="flex items-center justify-between px-1">
-                <span className="text-xs text-slate-500 font-semibold uppercase tracking-wider">
+                <span className="text-[11px] text-slate-500 font-semibold uppercase tracking-wider">
                   Ch {relay.relay_number}
                 </span>
-                {/*
-                 * RenameRelayButton is a small pencil icon that opens a
-                 * browser prompt() dialog for the user to type a new name.
-                 */}
                 <RenameRelayButton
                   relayId={relay.id}
                   currentName={relay.relay_name}
                 />
               </div>
 
-              {/*
-               * RelayCard handles the actual ON/OFF button logic.
-               * We pass all the data it needs as props.
-               */}
               <RelayCard
                 deviceId={device.device_id}
                 relayNumber={relay.relay_number}

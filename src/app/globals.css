@@ -37,3 +37,89 @@ body {
   background-color: rgba(99, 102, 241, 0.3); /* Indigo selection glow */
   color: #ffffff;
 }
+
+:root {
+  /* Keep existing --background and --foreground */
+  --color-success: #34d399;
+  --color-success-dim: rgba(52, 211, 153, 0.1);
+  --color-warning: #fbbf24;
+  --color-warning-dim: rgba(251, 191, 36, 0.1);
+  --color-error: #f87171;
+  --color-error-dim: rgba(248, 113, 113, 0.1);
+  --color-info: #60a5fa;
+  --color-info-dim: rgba(96, 165, 250, 0.1);
+  --color-accent: #818cf8;
+  --color-accent-dim: rgba(129, 140, 248, 0.1);
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes ripple {
+  0% { transform: scale(0); opacity: 0.5; }
+  100% { transform: scale(4); opacity: 0; }
+}
+
+@keyframes glowPulse {
+  0%, 100% { box-shadow: 0 0 8px var(--color-success-dim); }
+  50% { box-shadow: 0 0 20px var(--color-success-dim); }
+}
+
+@keyframes toastProgress {
+  from { width: 100%; }
+  to { width: 0%; }
+}
+
+.animate-shimmer {
+  background: linear-gradient(90deg, #1e293b 25%, #334155 50%, #1e293b 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+.animate-fade-in { animation: fadeIn 200ms ease-out; }
+.animate-slide-up { animation: slideUp 200ms ease-out; }
+.animate-slide-down { animation: slideDown 200ms ease-out; }
+.animate-scale-in { animation: scaleIn 200ms ease-out; }
+
+.tap-highlight-none { -webkit-tap-highlight-color: transparent; }
+
+.touch-target {
+  min-height: 48px;
+  min-width: 48px;
+}
+
+.glass {
+  background: rgba(15, 23, 42, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(51, 65, 85, 0.4);
+}
+
+.active-press {
+  transition: transform 150ms cubic-bezier(0.2, 0, 0, 1);
+}
+.active-press:active {
+  transform: scale(0.97);
+}

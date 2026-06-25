@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useTransition } from 'react';
 import { uploadFirmwareRelease, UploadResult } from './actions';
-import { Upload, FileCode, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
+import { Upload, FileCode, CheckCircle2, AlertCircle, Loader2, Package } from 'lucide-react';
 
 export default function UploadReleaseForm() {
   const [isPending, startTransition] = useTransition();
@@ -15,6 +15,7 @@ export default function UploadReleaseForm() {
   
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<UploadResult['release'] | null>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -79,18 +80,18 @@ export default function UploadReleaseForm() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="bg-slate-900/50 backdrop-blur-md border border-slate-800/80 rounded-2xl p-6 shadow-xl">
-        <div className="flex items-center gap-3 mb-5">
+    <div className="space-y-4">
+      <div className="bg-slate-900/80 border border-slate-800/60 rounded-2xl p-5 sm:p-6 shadow-xl shadow-black/10">
+        <div className="flex items-center gap-2.5 mb-5">
           <Upload className="w-5 h-5 text-indigo-400" />
           <h2 className="text-sm font-bold text-white tracking-wide uppercase">
-            Upload New Release
+            Upload Release
           </h2>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase tracking-wider">
+            <label className="block text-[11px] font-semibold text-slate-400 mb-1.5 uppercase tracking-wider">
               Version String
             </label>
             <input
@@ -99,23 +100,23 @@ export default function UploadReleaseForm() {
               value={version}
               onChange={(e) => setVersion(e.target.value)}
               disabled={isPending}
-              className="w-full bg-slate-950/80 border border-slate-800/80 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500/80 transition-colors placeholder:text-slate-600 disabled:opacity-50"
+              className="w-full bg-slate-950/80 border border-slate-800/80 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-indigo-500 transition-colors placeholder:text-slate-600 disabled:opacity-50"
               required
             />
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase tracking-wider">
+            <label className="block text-[11px] font-semibold text-slate-400 mb-1.5 uppercase tracking-wider">
               Compatible Model
             </label>
             <select
               value={compatibleModel}
               onChange={(e) => setCompatibleModel(e.target.value)}
               disabled={isPending}
-              className="w-full bg-slate-950/80 border border-slate-800/80 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500/80 transition-colors disabled:opacity-50 cursor-pointer"
+              className="w-full bg-slate-950/80 border border-slate-800/80 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-indigo-500 transition-colors disabled:opacity-50 cursor-pointer"
             >
-              <option value="2CH_RELAY">2CH_RELAY (2-Channel Relay)</option>
-              <option value="4CH_RELAY">4CH_RELAY (4-Channel Relay)</option>
+              <option value="2CH_RELAY">2CH_RELAY (2-Channel)</option>
+              <option value="4CH_RELAY">4CH_RELAY (4-Channel)</option>
             </select>
           </div>
 
@@ -126,16 +127,16 @@ export default function UploadReleaseForm() {
               checked={isStable}
               onChange={(e) => setIsStable(e.target.checked)}
               disabled={isPending}
-              className="w-4 h-4 rounded border-slate-800 text-indigo-600 focus:ring-indigo-500/50 bg-slate-950 focus:ring-offset-slate-950 cursor-pointer"
+              className="w-5 h-5 rounded border-slate-800 text-indigo-600 focus:ring-indigo-500/50 bg-slate-950 focus:ring-offset-slate-950 cursor-pointer"
             />
             <label htmlFor="isStable" className="text-xs font-semibold text-slate-300 cursor-pointer select-none">
-              Mark as Stable Release (otherwise, Beta)
+              Mark as Stable Release
             </label>
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase tracking-wider">
-              Minimum Required Version (Optional)
+            <label className="block text-[11px] font-semibold text-slate-400 mb-1.5 uppercase tracking-wider">
+              Min Required Version (Optional)
             </label>
             <input
               type="text"
@@ -143,7 +144,7 @@ export default function UploadReleaseForm() {
               value={minimumFirmwareVersion}
               onChange={(e) => setMinimumFirmwareVersion(e.target.value)}
               disabled={isPending}
-              className="w-full bg-slate-950/80 border border-slate-800/80 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500/80 transition-colors placeholder:text-slate-600 disabled:opacity-50"
+              className="w-full bg-slate-950/80 border border-slate-800/80 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-indigo-500 transition-colors placeholder:text-slate-600 disabled:opacity-50"
             />
             <span className="block text-[10px] text-slate-600 mt-1">
               Devices must be running at least this version to receive the update.
@@ -151,24 +152,29 @@ export default function UploadReleaseForm() {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase tracking-wider">
+            <label className="block text-[11px] font-semibold text-slate-400 mb-1.5 uppercase tracking-wider">
               Release Notes
             </label>
             <textarea
-              placeholder="Describe what changed in this release..."
+              placeholder="Describe what changed..."
               value={releaseNotes}
               onChange={(e) => setReleaseNotes(e.target.value)}
               disabled={isPending}
               rows={3}
-              className="w-full bg-slate-950/80 border border-slate-800/80 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500/80 transition-colors placeholder:text-slate-600 disabled:opacity-50 resize-none"
+              className="w-full bg-slate-950/80 border border-slate-800/80 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-indigo-500 transition-colors placeholder:text-slate-600 disabled:opacity-50 resize-none"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase tracking-wider">
+            <label className="block text-[11px] font-semibold text-slate-400 mb-1.5 uppercase tracking-wider">
               Firmware Binary (.bin)
             </label>
-            <div className="relative group cursor-pointer">
+            <div
+              className={`relative group cursor-pointer transition-colors ${isDragOver ? 'opacity-90' : ''}`}
+              onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
+              onDragLeave={() => setIsDragOver(false)}
+              onDrop={() => setIsDragOver(false)}
+            >
               <input
                 type="file"
                 ref={fileInputRef}
@@ -178,10 +184,20 @@ export default function UploadReleaseForm() {
                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10 disabled:cursor-not-allowed"
                 required
               />
-              <div className="border-2 border-dashed border-slate-800 hover:border-indigo-500/50 rounded-xl p-6 text-center transition-colors bg-slate-950/20 group-hover:bg-slate-950/40">
-                <FileCode className="w-8 h-8 text-slate-500 group-hover:text-indigo-400 mx-auto mb-2.5 transition-colors" />
+              <div className={`border-2 border-dashed rounded-xl p-6 text-center transition-colors bg-slate-950/20 group-hover:bg-slate-950/40 ${
+                isDragOver
+                  ? 'border-indigo-500/50 bg-indigo-950/10'
+                  : file
+                    ? 'border-emerald-500/30 bg-emerald-950/5'
+                    : 'border-slate-800 hover:border-indigo-500/30'
+              }`}>
+                {file ? (
+                  <Package className="w-8 h-8 text-emerald-400 mx-auto mb-2.5" />
+                ) : (
+                  <FileCode className="w-8 h-8 text-slate-500 group-hover:text-indigo-400 mx-auto mb-2.5 transition-colors" />
+                )}
                 <span className="block text-xs text-slate-400 font-medium">
-                  {file ? file.name : 'Select or drag & drop firmware .bin file'}
+                  {file ? file.name : 'Select or drag firmware .bin file'}
                 </span>
                 <span className="block text-[10px] text-slate-600 mt-1">
                   {file ? formatSize(file.size) : 'Max file size: 1MB'}
@@ -191,7 +207,7 @@ export default function UploadReleaseForm() {
           </div>
 
           {error && (
-            <div className="flex items-start gap-2.5 bg-rose-500/10 border border-rose-500/20 rounded-xl p-3.5 text-xs text-rose-400">
+            <div className="flex items-start gap-2.5 bg-red-500/10 border border-red-500/20 rounded-xl p-3.5 text-xs text-red-400 animate-slide-up">
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
               <span>{error}</span>
             </div>
@@ -200,12 +216,12 @@ export default function UploadReleaseForm() {
           <button
             type="submit"
             disabled={isPending}
-            className="w-full bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white text-xs font-bold py-3 px-4 rounded-xl transition-all cursor-pointer shadow-lg hover:shadow-indigo-500/20 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
+            className="w-full bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white text-sm font-bold py-3 px-4 rounded-xl transition-all cursor-pointer shadow-lg hover:shadow-indigo-500/20 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none tap-highlight-none active-press touch-target"
           >
             {isPending ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
-                Uploading Firmware...
+                Uploading…
               </>
             ) : (
               <>
@@ -218,7 +234,7 @@ export default function UploadReleaseForm() {
       </div>
 
       {result && (
-        <div className="bg-emerald-950/25 border border-emerald-500/20 rounded-2xl p-6 shadow-xl space-y-4 animate-in fade-in slide-in-from-bottom-3 duration-300">
+        <div className="bg-emerald-950/20 border border-emerald-500/20 rounded-2xl p-5 shadow-xl space-y-4 animate-slide-up">
           <div className="flex items-center gap-2.5 text-emerald-400 font-semibold text-sm">
             <CheckCircle2 className="w-5 h-5 shrink-0" />
             <span>Upload successful</span>
@@ -241,25 +257,25 @@ export default function UploadReleaseForm() {
             </div>
             {result.minimum_firmware_version && (
               <div className="flex justify-between py-1 border-b border-slate-900">
-                <span className="text-slate-500">Min Req Version:</span>
+                <span className="text-slate-500">Min Req:</span>
                 <span className="text-indigo-400 font-semibold">&gt;= {result.minimum_firmware_version}</span>
               </div>
             )}
             <div className="flex justify-between py-1 border-b border-slate-900">
               <span className="text-slate-500">Size:</span>
-              <span className="text-white">{formatSize(result.firmware_size)} ({result.firmware_size} B)</span>
+              <span className="text-white">{formatSize(result.firmware_size)}</span>
             </div>
             <div className="flex flex-col py-1 border-b border-slate-900 gap-1">
               <span className="text-slate-500">SHA256:</span>
-              <span className="text-slate-400 break-all select-all">{result.sha256}</span>
+              <span className="text-slate-400 break-all select-all text-[10px]">{result.sha256}</span>
             </div>
             <div className="flex flex-col py-1 gap-1">
-              <span className="text-slate-500">Public URL:</span>
+              <span className="text-slate-500">URL:</span>
               <a 
                 href={result.firmware_url}
                 target="_blank"
                 rel="noreferrer"
-                className="text-indigo-400 hover:text-indigo-300 hover:underline break-all truncate font-medium block"
+                className="text-indigo-400 hover:text-indigo-300 hover:underline break-all truncate font-medium block text-[10px]"
               >
                 {result.firmware_url}
               </a>
