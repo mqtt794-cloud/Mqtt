@@ -39,3 +39,21 @@ ALTER TABLE firmware_releases ADD CONSTRAINT unique_version_model UNIQUE (versio
 -- 5. Add columns is_stable and minimum_firmware_version to firmware_releases
 ALTER TABLE firmware_releases ADD COLUMN IF NOT EXISTS is_stable BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE firmware_releases ADD COLUMN IF NOT EXISTS minimum_firmware_version TEXT;
+
+-- 6. Add composite index and RPC function for device events retention cleanup
+CREATE INDEX IF NOT EXISTS idx_device_events_device_created
+ON device_events(device_id, created_at DESC);
+
+CREATE OR REPLACE FUNCTION clean_old_device_events(target_device_id TEXT)
+RETURNS VOID AS $$
+BEGIN
+  DELETE FROM device_events
+  WHERE id IN (
+      SELECT id
+      FROM device_events
+      WHERE device_id = target_device_id
+      ORDER BY created_at DESC
+      OFFSET 30
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;

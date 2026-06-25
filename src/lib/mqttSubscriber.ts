@@ -316,14 +316,7 @@ class MqttSubscriber {
     }
 
     // 3. Log event into device_events
-    await supabaseAdmin
-      .from('device_events')
-      .insert({
-        device_id: deviceId,
-        event_type: 'STATUS_UPDATE',
-        payload: payload,
-        source: 'MQTT'
-      });
+    await this._logDeviceEvent(deviceId, 'STATUS_UPDATE', payload);
   }
 
   /**
@@ -362,14 +355,7 @@ class MqttSubscriber {
     }
 
     // 3. Log event into device_events
-    await supabaseAdmin
-      .from('device_events')
-      .insert({
-        device_id: deviceId,
-        event_type: 'STATE_SNAPSHOT',
-        payload: payload,
-        source: 'MQTT'
-      });
+    await this._logDeviceEvent(deviceId, 'STATE_SNAPSHOT', payload);
   }
 
   /**
@@ -381,14 +367,7 @@ class MqttSubscriber {
     console.log(`[MQTT Subscriber] ACK received from ${deviceId}:`, payload);
 
     // Log the ACK event
-    await supabaseAdmin
-      .from('device_events')
-      .insert({
-        device_id: deviceId,
-        event_type: 'COMMAND_ACK',
-        payload: payload,
-        source: 'MQTT'
-      });
+    await this._logDeviceEvent(deviceId, 'COMMAND_ACK', payload);
   }
 
   /**
@@ -452,14 +431,7 @@ class MqttSubscriber {
     }
 
     // 4. Log event
-    await supabaseAdmin
-      .from('device_events')
-      .insert({
-        device_id: deviceId,
-        event_type: 'CONFIG_SNAPSHOT',
-        payload: payload,
-        source: 'MQTT'
-      });
+    await this._logDeviceEvent(deviceId, 'CONFIG_SNAPSHOT', payload);
   }
 
   /**
@@ -523,13 +495,43 @@ class MqttSubscriber {
     }
 
     // 3. Log the status event in device_events
-    await supabaseAdmin
+    await this._logDeviceEvent(deviceId, 'OTA_STATUS', payload);
+  }
+
+  /**
+   * _logDeviceEvent(deviceId, eventType, payload, source)
+   * ----------------------------------------------------
+   * Logs a device event into the database and cleans up old events
+   * so that each device retains at most 30 events in the history.
+   */
+  private async _logDeviceEvent(deviceId: string, eventType: string, payload: any, source: string = 'MQTT') {
+    // 1. Insert the event
+    const { error: insertErr } = await supabaseAdmin
       .from('device_events')
       .insert({
         device_id: deviceId,
-        event_type: 'OTA_STATUS',
+        event_type: eventType,
         payload: payload,
-        source: 'MQTT'
+        source: source
+      });
+
+    if (insertErr) {
+      console.error(`[MQTT Subscriber] Failed to log event ${eventType} for ${deviceId}:`, insertErr.message);
+      return;
+    }
+
+    // 2. Perform old event retention cleanup (keep maximum 30 events per device)
+    // Run cleanup asynchronously in the background so it never blocks MQTT loops
+    Promise.resolve(
+      supabaseAdmin.rpc('clean_old_device_events', { target_device_id: deviceId })
+    )
+      .then(({ error: rpcErr }) => {
+        if (rpcErr) {
+          console.error(`[MQTT Subscriber] Failed to clean up events for ${deviceId}:`, rpcErr.message);
+        }
+      })
+      .catch((err: any) => {
+        console.error(`[MQTT Subscriber] Unexpected error during event cleanup for ${deviceId}:`, err);
       });
   }
 }

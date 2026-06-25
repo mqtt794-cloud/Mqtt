@@ -63,6 +63,24 @@ CREATE TABLE IF NOT EXISTS device_events (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
+CREATE INDEX IF NOT EXISTS idx_device_events_device_created
+ON device_events(device_id, created_at DESC);
+
+-- RPC function to clean old device events (retains newest 30 per device)
+CREATE OR REPLACE FUNCTION clean_old_device_events(target_device_id TEXT)
+RETURNS VOID AS $$
+BEGIN
+  DELETE FROM device_events
+  WHERE id IN (
+      SELECT id
+      FROM device_events
+      WHERE device_id = target_device_id
+      ORDER BY created_at DESC
+      OFFSET 30
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
 -- ─────────────────────────────────────────────────────────────────────────────
 --  SEEDING DEMO DEVICES (Optional)
 --  Device ID: ESP001 | Secret: X7K29A
