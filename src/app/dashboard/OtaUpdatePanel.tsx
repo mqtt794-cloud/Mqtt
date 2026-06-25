@@ -37,19 +37,31 @@ function isNewerVersion(target: string, current: string): boolean {
   return false;
 }
 
-// ── OTA Timeline Steps ──────────────────────────────────────────────────────
-const OTA_STEPS = ['PENDING', 'DOWNLOADING', 'INSTALLING', 'REBOOTING', 'SUCCESS'] as const;
-const STEP_LABELS: Record<string, string> = {
-  PENDING: 'Preparing',
-  DOWNLOADING: 'Downloading',
-  INSTALLING: 'Installing',
-  REBOOTING: 'Rebooting',
-  SUCCESS: 'Complete',
-};
+// ── OTA Timeline Steps ──────────────────────────────────────────────────
+// Maps OTA job statuses to visual timeline steps
+const TIMELINE_STEPS = [
+  { key: 'PENDING',      label: 'Preparing' },
+  { key: 'DOWNLOADING',  label: 'Downloading' },
+  { key: 'VERIFYING',    label: 'Verifying SHA' },
+  { key: 'INSTALLING',   label: 'Installing' },
+  { key: 'REBOOTING',    label: 'Rebooting' },
+  { key: 'VERIFY_FW',    label: 'Verifying Firmware' },
+  { key: 'SUCCESS',      label: 'Completed' },
+] as const;
 
+// Map actual job status to timeline step index
 function getStepIndex(status: string): number {
-  const idx = OTA_STEPS.indexOf(status as any);
-  return idx >= 0 ? idx : 0;
+  // The backend may not have VERIFYING/VERIFY_FW as explicit statuses,
+  // so we map known statuses to their timeline position:
+  const mapping: Record<string, number> = {
+    'PENDING': 0,
+    'DOWNLOADING': 1,
+    'INSTALLING': 3,   // VERIFYING (2) is implicit between download and install
+    'REBOOTING': 4,
+    'SUCCESS': 6,
+    'FAILED': -1,
+  };
+  return mapping[status] ?? 0;
 }
 
 function OtaTimeline({ status, progress }: { status: string; progress: number }) {
@@ -57,26 +69,34 @@ function OtaTimeline({ status, progress }: { status: string; progress: number })
   const isFailed = status === 'FAILED';
 
   return (
-    <div className="flex flex-col gap-0">
-      {OTA_STEPS.map((step, i) => {
-        const isComplete = i < currentIdx;
-        const isCurrent = i === currentIdx;
-        const isUpcoming = i > currentIdx;
+    <div className="flex flex-col">
+      {TIMELINE_STEPS.map((step, i) => {
+        const isComplete = !isFailed && i < currentIdx;
+        const isCurrent = !isFailed && i === currentIdx;
+        const isUpcoming = isFailed || i > currentIdx;
+        // Show implicit steps (VERIFYING, VERIFY_FW) as complete if we've passed them
+        const isImplicitComplete = !isFailed && (
+          (step.key === 'VERIFYING' && currentIdx >= 3) ||
+          (step.key === 'VERIFY_FW' && currentIdx >= 6)
+        );
 
         return (
-          <div key={step} className="flex items-start gap-3 relative">
-            {/* Vertical line connector */}
-            {i < OTA_STEPS.length - 1 && (
-              <div className={`absolute left-[9px] top-5 w-0.5 h-5 transition-colors duration-500 ${
-                isComplete ? 'bg-emerald-500/50' : 'bg-slate-700/50'
-              }`} />
+          <div key={step.key} className="flex items-start gap-3 relative">
+            {/* Vertical connector line */}
+            {i < TIMELINE_STEPS.length - 1 && (
+              <div
+                className={`absolute left-[9px] top-[18px] w-0.5 h-4 ${
+                  isComplete || isImplicitComplete ? 'bg-emerald-500/40' : 'bg-slate-800'
+                }`}
+                style={{ transition: 'background-color 220ms ease' }}
+              />
             )}
 
             {/* Step icon */}
             <div className="flex-shrink-0 mt-0.5">
-              {isFailed && isCurrent ? (
+              {isFailed && i === currentIdx ? (
                 <AlertCircle className="w-[18px] h-[18px] text-red-400" />
-              ) : isComplete ? (
+              ) : isComplete || isImplicitComplete ? (
                 <CheckCircle className="w-[18px] h-[18px] text-emerald-400" />
               ) : isCurrent ? (
                 <Loader2 className="w-[18px] h-[18px] text-indigo-400 animate-spin" />
@@ -85,20 +105,23 @@ function OtaTimeline({ status, progress }: { status: string; progress: number })
               )}
             </div>
 
-            {/* Step label + progress */}
-            <div className="flex items-center gap-2 pb-2 min-w-0">
-              <span className={`text-xs font-semibold transition-colors duration-300 ${
-                isFailed && isCurrent
-                  ? 'text-red-400'
-                  : isComplete
-                    ? 'text-emerald-400'
-                    : isCurrent
-                      ? 'text-indigo-300'
-                      : 'text-slate-600'
-              }`}>
-                {isFailed && isCurrent ? 'Failed' : STEP_LABELS[step]}
+            {/* Step label */}
+            <div className="flex items-center gap-2 pb-1.5 min-w-0">
+              <span
+                className={`text-xs font-semibold ${
+                  isFailed && i === currentIdx
+                    ? 'text-red-400'
+                    : isComplete || isImplicitComplete
+                      ? 'text-emerald-400'
+                      : isCurrent
+                        ? 'text-indigo-300'
+                        : 'text-slate-600'
+                }`}
+                style={{ transition: 'color 220ms ease' }}
+              >
+                {isFailed && i === currentIdx ? 'Failed' : step.label}
               </span>
-              {isCurrent && step === 'DOWNLOADING' && (
+              {isCurrent && step.key === 'DOWNLOADING' && progress > 0 && (
                 <span className="text-[10px] font-bold text-indigo-400">{progress}%</span>
               )}
             </div>
@@ -108,10 +131,10 @@ function OtaTimeline({ status, progress }: { status: string; progress: number })
 
       {/* Download progress bar */}
       {status === 'DOWNLOADING' && (
-        <div className="ml-[27px] w-[calc(100%-27px)] bg-slate-800 rounded-full h-1.5 overflow-hidden -mt-1 mb-1">
+        <div className="ml-[27px] w-[calc(100%-27px)] bg-slate-800 rounded-full h-1.5 overflow-hidden mt-0.5 mb-1">
           <div
-            className="bg-gradient-to-r from-indigo-500 to-indigo-400 h-1.5 rounded-full transition-all duration-500 ease-out"
-            style={{ width: `${progress}%` }}
+            className="bg-gradient-to-r from-indigo-500 to-indigo-400 h-1.5 rounded-full"
+            style={{ width: `${progress}%`, transition: 'width 500ms ease-out' }}
           />
         </div>
       )}
@@ -119,7 +142,7 @@ function OtaTimeline({ status, progress }: { status: string; progress: number })
   );
 }
 
-// ── Main Component ──────────────────────────────────────────────────────────
+// ── Main Component ──────────────────────────────────────────────────────
 export default function OtaUpdatePanel({ deviceId, currentVersion, latestRelease }: OtaUpdatePanelProps) {
   const [job, setJob] = useState<OtaJob | null>(null);
   const [loading, setLoading] = useState(false);
@@ -136,7 +159,7 @@ export default function OtaUpdatePanel({ deviceId, currentVersion, latestRelease
           const data = await res.json();
           if (data.job) {
             setJob(data.job);
-            const activeStates = ['PENDING', 'DOWNLOADING', 'INSTALLING'];
+            const activeStates = ['PENDING', 'DOWNLOADING', 'INSTALLING', 'REBOOTING'];
             if (activeStates.includes(data.job.status)) {
               setPollingActive(true);
             }
@@ -152,7 +175,6 @@ export default function OtaUpdatePanel({ deviceId, currentVersion, latestRelease
   // Poll ONLY while OTA is active
   useEffect(() => {
     if (!pollingActive) return;
-
     const interval = setInterval(async () => {
       if (document.visibilityState !== 'visible') return;
       try {
@@ -164,11 +186,12 @@ export default function OtaUpdatePanel({ deviceId, currentVersion, latestRelease
             const finalStates = ['SUCCESS', 'FAILED'];
             if (finalStates.includes(data.job.status)) {
               setPollingActive(false);
-              if (data.job.status === 'SUCCESS') {
-                toast('OTA update completed successfully!', 'success');
-              } else {
-                toast('OTA update failed. Check device connection.', 'error');
-              }
+              toast(
+                data.job.status === 'SUCCESS'
+                  ? 'OTA update completed successfully!'
+                  : 'OTA update failed. Check device connection.',
+                data.job.status === 'SUCCESS' ? 'success' : 'error'
+              );
             }
           }
         }
@@ -176,7 +199,6 @@ export default function OtaUpdatePanel({ deviceId, currentVersion, latestRelease
         console.error('Error polling OTA status:', err);
       }
     }, 2000);
-
     return () => clearInterval(interval);
   }, [deviceId, pollingActive, toast]);
 
@@ -221,10 +243,10 @@ export default function OtaUpdatePanel({ deviceId, currentVersion, latestRelease
     );
   }
 
-  // ── Final state: Success ──
+  // ── Success (no further update available) ──
   if (job && job.status === 'SUCCESS' && !hasUpdate) {
     return (
-      <div className="bg-slate-950/40 border border-slate-800/60 rounded-xl p-4 animate-fade-in">
+      <div className="bg-slate-950/40 border border-slate-800/60 rounded-xl p-4">
         <div className="flex items-center gap-2.5 text-emerald-400 text-xs font-medium">
           <CheckCircle className="w-4 h-4 flex-shrink-0" />
           <span>Updated successfully — running {currentVersion}</span>
@@ -241,9 +263,7 @@ export default function OtaUpdatePanel({ deviceId, currentVersion, latestRelease
           <Cpu className="w-3.5 h-3.5 text-indigo-400" />
           <span>FIRMWARE</span>
         </div>
-        <span className="text-xs font-mono text-slate-500">
-          Target: {latestRelease.version}
-        </span>
+        <span className="text-xs font-mono text-slate-500">Target: {latestRelease.version}</span>
       </div>
 
       {hasUpdate ? (
@@ -270,20 +290,22 @@ export default function OtaUpdatePanel({ deviceId, currentVersion, latestRelease
           <button
             onClick={handleUpdate}
             disabled={loading || isOlderThanMin}
-            className={`w-full py-3 px-4 font-bold rounded-xl text-sm flex items-center justify-center gap-2 transition-all cursor-pointer tap-highlight-none active-press ${
+            className={`w-full py-3 px-4 font-bold rounded-xl text-sm flex items-center justify-center gap-2 cursor-pointer tap-highlight-none ${
               isOlderThanMin
                 ? 'bg-slate-900 text-slate-500 border border-slate-800 cursor-not-allowed'
                 : 'bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white shadow-lg hover:shadow-indigo-500/20'
             }`}
+            style={{ transition: 'all 120ms ease' }}
+            onPointerDown={(e) => { if (!isOlderThanMin) e.currentTarget.style.transform = 'scale(0.97)'; }}
+            onPointerUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+            onPointerLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
           >
             {loading ? (
               <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
               <>
                 <Download className="w-4 h-4" />
-                {isOlderThanMin
-                  ? `Blocked (Req. >= ${latestRelease.minimum_firmware_version})`
-                  : `Update to ${latestRelease.version}`}
+                {isOlderThanMin ? `Blocked (Req. >= ${latestRelease.minimum_firmware_version})` : `Update to ${latestRelease.version}`}
               </>
             )}
           </button>

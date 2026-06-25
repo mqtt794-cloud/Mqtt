@@ -1,14 +1,8 @@
 /**
  * =============================================================================
- * RelayCard.tsx — Relay Channel Control Card with Switch Mode Config
+ * RelayCard.tsx — Relay Channel Control with Mode Selector
  * =============================================================================
- *
- * WHAT THIS FILE DOES:
- *   This is a "Client Component" (runs in the browser). It renders a single
- *   relay channel card with:
- *     - A large, satisfying tap-target toggle (RelayToggle)
- *     - A touch-friendly mode selector (ModeSelector)
- *     - Premium status badges and animations
+ * Passes `online` to child components to disable interactions when offline.
  */
 
 'use client';
@@ -17,41 +11,36 @@ import RelayToggle from './RelayToggle';
 import ModeSelector from './ModeSelector';
 
 interface RelayCardProps {
-  deviceId: string;          // The ESP device identifier, e.g. "ESP001"
-  relayNumber: number;       // 1, 2, 3, or 4
-  relayName: string;         // Human-readable name, e.g. "Bedroom Light"
-  currentState: boolean;     // true = ON, false = OFF (from database)
-  switchMode: string;        // Current switch mode (from database)
-  desiredSwitchMode: string; // Target switch mode (from database)
-  configStatus: string;      // 'SYNCED' or 'PENDING'
+  deviceId: string;
+  relayNumber: number;
+  relayName: string;
+  currentState: boolean;
+  switchMode: string;
+  desiredSwitchMode: string;
+  configStatus: string;
+  online: boolean;
 }
 
 export default function RelayCard({
-  deviceId,
-  relayNumber,
-  relayName,
-  currentState,
-  switchMode,
-  desiredSwitchMode,
-  configStatus,
+  deviceId, relayNumber, relayName, currentState,
+  switchMode, desiredSwitchMode, configStatus, online,
 }: RelayCardProps) {
   return (
-    <div className="flex flex-col gap-3 animate-fade-in">
-      {/* Large tap-target relay toggle */}
+    <div className="flex flex-col gap-3">
       <RelayToggle
         deviceId={deviceId}
         relayNumber={relayNumber}
         relayName={relayName}
         currentState={currentState}
+        online={online}
       />
-
-      {/* Touch-friendly mode selector */}
       <ModeSelector
         deviceId={deviceId}
         relayNumber={relayNumber}
         currentMode={switchMode}
         desiredMode={desiredSwitchMode}
         configStatus={configStatus}
+        online={online}
       />
     </div>
   );

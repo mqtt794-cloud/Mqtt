@@ -1,10 +1,13 @@
 /**
- * ActivityStrip.tsx — Live activity status bar
- * Shows the most recent device activity below the main nav.
- * Data comes from server-rendered props (no separate fetch).
+ * ActivityStrip.tsx — Auto-hiding live activity status bar
+ * Shows device activity for 3 seconds, then auto-hides.
+ * Re-appears when server data changes (new props).
  */
 
-import { Wifi, WifiOff, Clock, RefreshCw } from 'lucide-react';
+'use client';
+
+import { useState, useEffect, useRef } from 'react';
+import { Wifi, WifiOff, Clock } from 'lucide-react';
 
 interface DeviceActivity {
   device_id: string;
@@ -29,20 +32,44 @@ function getTimeDiff(isoString: string | null): string {
 }
 
 export default function ActivityStrip({ devices }: ActivityStripProps) {
+  const [visible, setVisible] = useState(true);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevDevicesRef = useRef<string>('');
+
+  // Serialize device state to detect changes
+  const deviceFingerprint = devices.map(d => `${d.device_id}:${d.online}:${d.last_seen}`).join('|');
+
+  useEffect(() => {
+    // Show strip when data changes
+    if (deviceFingerprint !== prevDevicesRef.current) {
+      prevDevicesRef.current = deviceFingerprint;
+      setVisible(true);
+    }
+
+    // Auto-hide after 3 seconds
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => setVisible(false), 3000);
+
+    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+  }, [deviceFingerprint]);
+
   if (devices.length === 0) return null;
 
   const onlineCount = devices.filter(d => d.online).length;
   const offlineCount = devices.length - onlineCount;
 
-  // Find the most recently seen device
   const mostRecent = devices
     .filter(d => d.last_seen)
     .sort((a, b) => new Date(b.last_seen!).getTime() - new Date(a.last_seen!).getTime())[0];
 
   return (
-    <div className="bg-slate-900/50 border-b border-slate-800/40 px-4 sm:px-6 py-2">
+    <div
+      className={`bg-slate-900/50 border-b border-slate-800/40 px-4 sm:px-6 overflow-hidden ${
+        visible ? 'max-h-10 py-2 opacity-100' : 'max-h-0 py-0 opacity-0'
+      }`}
+      style={{ transition: 'max-height 300ms ease, padding 300ms ease, opacity 300ms ease' }}
+    >
       <div className="max-w-7xl mx-auto flex items-center gap-4 text-xs text-slate-500 overflow-x-auto">
-        {/* Online/Offline summary */}
         <span className="flex items-center gap-1.5 flex-shrink-0">
           <Wifi className="w-3 h-3 text-emerald-400" />
           <span className="text-emerald-400 font-semibold">{onlineCount}</span>
@@ -59,7 +86,6 @@ export default function ActivityStrip({ devices }: ActivityStripProps) {
 
         <span className="text-slate-800">·</span>
 
-        {/* Most recent activity */}
         {mostRecent && (
           <span className="flex items-center gap-1.5 flex-shrink-0 text-slate-400">
             <Clock className="w-3 h-3" />

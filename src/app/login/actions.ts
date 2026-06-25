@@ -16,7 +16,7 @@
 
 'use server';
 
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 
 /**
@@ -36,15 +36,20 @@ export async function login(formData: FormData) {
     return { error: 'Please enter both email and password.' };
   }
 
+  const cleanInputEmail = email.trim().toLowerCase();
+  const cleanAdminEmail = adminEmail.trim().toLowerCase();
+
   // Verify against env variables
-  if (email.trim() === adminEmail && password === adminPassword) {
+  if (cleanInputEmail === cleanAdminEmail && password === adminPassword) {
     const cookieStore = await cookies();
+    const headersList = await headers();
+    const isSecure = headersList.get('x-forwarded-proto') === 'https';
     
     // Set a secure, HTTP-only session cookie valid for 7 days
     cookieStore.set('admin_session', 'authenticated', {
       path: '/',
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: isSecure,
       sameSite: 'lax',
       maxAge: 60 * 60 * 24 * 7, // 7 days in seconds
     });

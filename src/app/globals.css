@@ -1,13 +1,67 @@
 @import "tailwindcss";
 
+/*
+ * ==========================================================================
+ * DESIGN TOKENS — Semantic color system
+ * ==========================================================================
+ * Every component references these tokens instead of raw Tailwind colors.
+ * To create a light theme, AMOLED theme, or brand refresh — only change
+ * the values here. No component files need to be modified.
+ *
+ * Naming convention:
+ *   --surface-*   → backgrounds
+ *   --text-*      → foreground text
+ *   --border-*    → borders
+ *   --accent      → primary brand color
+ *   --success     → positive actions / online
+ *   --warning     → caution / syncing
+ *   --danger      → errors / offline
+ *   --info        → informational / neutral highlights
+ * ==========================================================================
+ */
 :root {
-  --background: #020617; /* Deep slate-950 */
-  --foreground: #f8fafc; /* Slate-50 */
+  /* Surface layers (darkest → lightest) */
+  --surface-base: #020617;
+  --surface-card: #0f172a;
+  --surface-raised: #1e293b;
+  --surface-hover: #334155;
+  --surface-active: #475569;
+
+  /* Text hierarchy */
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-tertiary: #64748b;
+  --text-muted: #475569;
+
+  /* Borders */
+  --border-default: rgba(51, 65, 85, 0.4);
+  --border-subtle: rgba(51, 65, 85, 0.2);
+
+  /* Accent — brand / primary actions */
+  --accent: #818cf8;
+  --accent-dim: rgba(129, 140, 248, 0.1);
+  --accent-hover: #6366f1;
+
+  /* Semantic: Success / Online */
+  --success: #34d399;
+  --success-dim: rgba(52, 211, 153, 0.08);
+
+  /* Semantic: Warning / Syncing */
+  --warning: #fbbf24;
+  --warning-dim: rgba(251, 191, 36, 0.08);
+
+  /* Semantic: Danger / Error / Offline */
+  --danger: #f87171;
+  --danger-dim: rgba(248, 113, 113, 0.08);
+
+  /* Semantic: Info */
+  --info: #60a5fa;
+  --info-dim: rgba(96, 165, 250, 0.08);
 }
 
 body {
-  background-color: var(--background);
-  color: var(--foreground);
+  background-color: var(--surface-base);
+  color: var(--text-primary);
   min-height: 100vh;
   overflow-x: hidden;
 }
@@ -19,39 +73,30 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: #020617;
+  background: var(--surface-base);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #1e293b;
+  background: var(--surface-raised);
   border-radius: 9999px;
-  border: 2px solid #020617;
+  border: 2px solid var(--surface-base);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #334155;
+  background: var(--surface-hover);
 }
 
 /* Selection overlay color */
 ::selection {
-  background-color: rgba(99, 102, 241, 0.3); /* Indigo selection glow */
+  background-color: rgba(99, 102, 241, 0.3);
   color: #ffffff;
 }
 
-:root {
-  /* Keep existing --background and --foreground */
-  --color-success: #34d399;
-  --color-success-dim: rgba(52, 211, 153, 0.1);
-  --color-warning: #fbbf24;
-  --color-warning-dim: rgba(251, 191, 36, 0.1);
-  --color-error: #f87171;
-  --color-error-dim: rgba(248, 113, 113, 0.1);
-  --color-info: #60a5fa;
-  --color-info-dim: rgba(96, 165, 250, 0.1);
-  --color-accent: #818cf8;
-  --color-accent-dim: rgba(129, 140, 248, 0.1);
-}
-
+/*
+ * ==========================================================================
+ * KEYFRAME ANIMATIONS
+ * ==========================================================================
+ */
 @keyframes shimmer {
   0% { background-position: -200% 0; }
   100% { background-position: 200% 0; }
@@ -83,8 +128,8 @@ body {
 }
 
 @keyframes glowPulse {
-  0%, 100% { box-shadow: 0 0 8px var(--color-success-dim); }
-  50% { box-shadow: 0 0 20px var(--color-success-dim); }
+  0%, 100% { box-shadow: 0 0 8px var(--success-dim); }
+  50% { box-shadow: 0 0 20px var(--success-dim); }
 }
 
 @keyframes toastProgress {
@@ -92,16 +137,35 @@ body {
   to { width: 0%; }
 }
 
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+@keyframes livePulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
 .animate-shimmer {
-  background: linear-gradient(90deg, #1e293b 25%, #334155 50%, #1e293b 75%);
+  background: linear-gradient(90deg, var(--surface-raised) 25%, var(--surface-hover) 50%, var(--surface-raised) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
 }
 
-.animate-fade-in { animation: fadeIn 200ms ease-out; }
-.animate-slide-up { animation: slideUp 200ms ease-out; }
-.animate-slide-down { animation: slideDown 200ms ease-out; }
-.animate-scale-in { animation: scaleIn 200ms ease-out; }
+/*
+ * Standardized animation durations:
+ *   Tap press:  120ms
+ *   Toggle:     180ms
+ *   Status:     220ms
+ *   Modal:      250ms
+ *   Toast:      300ms
+ */
+.animate-fade-in { animation: fadeIn 220ms ease-out; }
+.animate-slide-up { animation: slideUp 250ms cubic-bezier(0.2, 0, 0, 1); }
+.animate-slide-down { animation: slideDown 250ms cubic-bezier(0.2, 0, 0, 1); }
+.animate-scale-in { animation: scaleIn 180ms cubic-bezier(0.2, 0, 0, 1); }
+.animate-float { animation: float 3s ease-in-out infinite; }
 
 .tap-highlight-none { -webkit-tap-highlight-color: transparent; }
 
@@ -110,16 +174,50 @@ body {
   min-width: 48px;
 }
 
+/* Glass — used only on the nav bar header, not on cards */
 .glass {
-  background: rgba(15, 23, 42, 0.7);
+  background: rgba(15, 23, 42, 0.8);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(51, 65, 85, 0.4);
+  border: 1px solid var(--border-subtle);
 }
 
+/* Tap press — for elements not using inline pointerDown */
 .active-press {
-  transition: transform 150ms cubic-bezier(0.2, 0, 0, 1);
+  transition: transform 120ms cubic-bezier(0.2, 0, 0, 1);
 }
 .active-press:active {
   transform: scale(0.97);
+}
+
+/*
+ * ==========================================================================
+ * ACCESSIBILITY
+ * ==========================================================================
+ */
+
+/* Visible focus rings for keyboard navigation */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+/* Respect user preference for reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* High contrast mode compatibility */
+@media (prefers-contrast: high) {
+  :root {
+    --border-default: rgba(255, 255, 255, 0.3);
+    --border-subtle: rgba(255, 255, 255, 0.2);
+    --text-tertiary: #94a3b8;
+    --text-muted: #64748b;
+  }
 }

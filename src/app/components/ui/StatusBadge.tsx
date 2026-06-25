@@ -1,12 +1,12 @@
 /**
- * StatusBadge.tsx — Premium animated status chip component
- * Provides consistent, smoothly-animated status indicators across the dashboard.
- * Colors crossfade on variant change with transition-all duration-500.
+ * StatusBadge.tsx — Animated status chip component
+ * Smooth 500ms color crossfade between states.
+ * Pending/syncing states show animated bouncing dots.
  */
 
 type BadgeVariant = 'online' | 'offline' | 'pending' | 'syncing' | 'synced' | 'error' | 'success';
 
-const variantConfig: Record<BadgeVariant, { dot: string; bg: string; text: string; border: string; pulse?: boolean }> = {
+const variantConfig: Record<BadgeVariant, { dot: string; bg: string; text: string; border: string; animated?: boolean }> = {
   online: {
     dot: 'bg-emerald-400',
     bg: 'bg-emerald-500/10',
@@ -24,14 +24,14 @@ const variantConfig: Record<BadgeVariant, { dot: string; bg: string; text: strin
     bg: 'bg-amber-500/10',
     text: 'text-amber-400',
     border: 'border-amber-500/20',
-    pulse: true,
+    animated: true,
   },
   syncing: {
     dot: 'bg-blue-400',
     bg: 'bg-blue-500/10',
     text: 'text-blue-400',
     border: 'border-blue-500/20',
-    pulse: true,
+    animated: true,
   },
   synced: {
     dot: 'bg-emerald-400',
@@ -64,14 +64,22 @@ export default function StatusBadge({ variant, label, className = '' }: StatusBa
 
   return (
     <span
-      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border transition-all duration-500 ${config.bg} ${config.text} ${config.border} ${className}`}
+      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border ${config.bg} ${config.text} ${config.border} ${className}`}
+      style={{ transition: 'all 500ms ease' }}
     >
-      <span className="relative flex h-2 w-2">
-        {config.pulse && (
-          <span className={`absolute inset-0 rounded-full ${config.dot} opacity-75 animate-ping`} />
-        )}
-        <span className={`relative inline-flex rounded-full h-2 w-2 transition-colors duration-500 ${config.dot}`} />
-      </span>
+      {config.animated ? (
+        /* Animated bouncing dots for pending/syncing states */
+        <span className="flex gap-[3px] items-center">
+          <span className={`w-1.5 h-1.5 rounded-full ${config.dot} animate-bounce`} style={{ animationDelay: '0ms', animationDuration: '800ms' }} />
+          <span className={`w-1.5 h-1.5 rounded-full ${config.dot} animate-bounce`} style={{ animationDelay: '200ms', animationDuration: '800ms' }} />
+          <span className={`w-1.5 h-1.5 rounded-full ${config.dot} animate-bounce`} style={{ animationDelay: '400ms', animationDuration: '800ms' }} />
+        </span>
+      ) : (
+        /* Static dot with optional pulse ring for online */
+        <span className="relative flex h-2 w-2">
+          <span className={`relative inline-flex rounded-full h-2 w-2 ${config.dot}`} style={{ transition: 'background-color 500ms ease' }} />
+        </span>
+      )}
       {label}
     </span>
   );

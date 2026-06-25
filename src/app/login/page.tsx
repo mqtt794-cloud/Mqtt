@@ -90,6 +90,10 @@ export default function LoginPage() {
                 name="email"
                 type="email"
                 required
+                autoComplete="email"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck="false"
                 className="w-full px-4 py-3.5 bg-slate-950/80 border border-slate-800/80 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors text-sm"
                 placeholder="you@domain.com"
               />
@@ -105,6 +109,7 @@ export default function LoginPage() {
                 name="password"
                 type="password"
                 required
+                autoComplete="current-password"
                 className="w-full px-4 py-3.5 bg-slate-950/80 border border-slate-800/80 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors text-sm"
                 placeholder="••••••••"
               />
