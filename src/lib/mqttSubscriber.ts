@@ -116,30 +116,34 @@ class MqttSubscriber {
       const downloadTimeoutLimit = new Date(now.getTime() - 10 * 60 * 1000).toISOString();
       const { data: downloadStaleJobs, error: downloadErr } = await supabaseAdmin
         .from('ota_jobs')
-        .update({ status: 'FAILED', error_code: 'DOWNLOAD_TIMEOUT', updated_at: now.toISOString() })
+        .select('id, device_id, progress')
         .in('status', ['PENDING', 'DOWNLOADING', 'INSTALLING'])
-        .lt('updated_at', downloadTimeoutLimit)
-        .select('id, device_id');
+        .lt('updated_at', downloadTimeoutLimit);
 
       if (downloadErr) {
-        console.error('[MQTT Subscriber Watchdog] Failed to clean up downloading/installing jobs:', downloadErr.message);
+        console.error('[MQTT Subscriber Watchdog] Failed to query downloading/installing jobs:', downloadErr.message);
       } else if (downloadStaleJobs && downloadStaleJobs.length > 0) {
         console.log(`[MQTT Subscriber Watchdog] Timed out ${downloadStaleJobs.length} active downloading jobs:`, downloadStaleJobs);
+        for (const job of downloadStaleJobs) {
+          await this._updateOtaJobStatus(job.id, job.device_id, 'FAILED', job.progress || 0, 'DOWNLOAD_TIMEOUT');
+        }
       }
 
       // 2. Timeout for rebooting (Rollback detection): 5 minutes
       const rollbackLimit = new Date(now.getTime() - 5 * 60 * 1000).toISOString();
       const { data: rollbackJobs, error: rollbackErr } = await supabaseAdmin
         .from('ota_jobs')
-        .update({ status: 'FAILED', error_code: 'ROLLBACK_DETECTED', updated_at: now.toISOString() })
+        .select('id, device_id, progress')
         .eq('status', 'REBOOTING')
-        .lt('updated_at', rollbackLimit)
-        .select('id, device_id');
+        .lt('updated_at', rollbackLimit);
 
       if (rollbackErr) {
-        console.error('[MQTT Subscriber Watchdog] Failed to clean up rebooting/rollback jobs:', rollbackErr.message);
+        console.error('[MQTT Subscriber Watchdog] Failed to query rebooting/rollback jobs:', rollbackErr.message);
       } else if (rollbackJobs && rollbackJobs.length > 0) {
         console.log(`[MQTT Subscriber Watchdog] Rolled back ${rollbackJobs.length} rebooting jobs (timeout):`, rollbackJobs);
+        for (const job of rollbackJobs) {
+          await this._updateOtaJobStatus(job.id, job.device_id, 'FAILED', job.progress || 0, 'ROLLBACK_DETECTED');
+        }
       }
     } catch (watchdogErr) {
       console.error('[MQTT Subscriber Watchdog] Stale job cleanup failed:', watchdogErr);
@@ -263,7 +267,7 @@ class MqttSubscriber {
       // Verify active/rebooting OTA job for successful upgrade check
       const { data: activeOtaJob, error: otaJobErr } = await supabaseAdmin
         .from('ota_jobs')
-        .select('id, target_version, status, updated_at')
+        .select('id, target_version, status, updated_at, progress')
         .eq('device_id', deviceId)
         .in('status', ['PENDING', 'DOWNLOADING', 'INSTALLING', 'REBOOTING'])
         .order('created_at', { ascending: false })
@@ -276,27 +280,12 @@ class MqttSubscriber {
 
       if (activeOtaJob) {
         if (payload.firmware === activeOtaJob.target_version) {
-          await supabaseAdmin
-            .from('ota_jobs')
-            .update({
-              status: 'SUCCESS',
-              progress: 100,
-              updated_at: new Date().toISOString(),
-              error_code: null
-            })
-            .eq('id', activeOtaJob.id);
+          await this._updateOtaJobStatus(activeOtaJob.id, deviceId, 'SUCCESS', 100);
           console.log(`[MQTT Subscriber] OTA Job ${activeOtaJob.id} succeeded for ${deviceId}. Version upgraded to ${payload.firmware}.`);
         } else if (activeOtaJob.status === 'REBOOTING') {
           const elapsed = Date.now() - new Date(activeOtaJob.updated_at).getTime();
           if (elapsed >= 5 * 60 * 1000) {
-            await supabaseAdmin
-              .from('ota_jobs')
-              .update({
-                status: 'FAILED',
-                error_code: 'ROLLBACK_DETECTED',
-                updated_at: new Date().toISOString()
-              })
-              .eq('id', activeOtaJob.id);
+            await this._updateOtaJobStatus(activeOtaJob.id, deviceId, 'FAILED', activeOtaJob.progress || 0, 'ROLLBACK_DETECTED');
             console.log(`[MQTT Subscriber] OTA Job ${activeOtaJob.id} failed (ROLLBACK_DETECTED) for ${deviceId} after 5+ minutes elapsed.`);
           }
         }
@@ -471,25 +460,7 @@ class MqttSubscriber {
     }
 
     if (activeJob) {
-      // 2. Update the active job status
-      const updateData: any = {
-        status: status,
-        progress: progress,
-        updated_at: new Date().toISOString()
-      };
-      if (status === 'FAILED' && errorMsg) {
-        updateData.error_code = errorMsg;
-      }
-      const { error: updateError } = await supabaseAdmin
-        .from('ota_jobs')
-        .update(updateData)
-        .eq('id', activeJob.id);
-
-      if (updateError) {
-        console.error(`[MQTT Subscriber] Failed to update ota_jobs status:`, updateError.message);
-      } else {
-        console.log(`[MQTT Subscriber] Updated OTA job ${activeJob.id} to ${status} (${progress}%)`);
-      }
+      await this._updateOtaJobStatus(activeJob.id, deviceId, status, progress, errorMsg);
     } else {
       console.warn(`[MQTT Subscriber] Received ota_status update but no active OTA job found for device ${deviceId}`);
     }
@@ -533,6 +504,96 @@ class MqttSubscriber {
       .catch((err: any) => {
         console.error(`[MQTT Subscriber] Unexpected error during event cleanup for ${deviceId}:`, err);
       });
+  }
+
+  /**
+   * _cleanupOtaHistory(deviceId)
+   * ----------------------------
+   * Cleans up historical OTA jobs in PostgreSQL so that each device retains
+   * only its current active job and its single latest completed (SUCCESS/FAILED) job.
+   */
+  private _cleanupOtaHistory(deviceId: string) {
+    cleanupOtaHistory(deviceId);
+  }
+
+  /**
+   * _updateOtaJobStatus(jobId, deviceId, status, progress, errorCode)
+   * -----------------------------------------------------------------
+   * Centralized helper to update an OTA job's status, progress, and error code.
+   * If the job enters a final state (SUCCESS/FAILED), it automatically triggers history cleanup.
+   */
+  private async _updateOtaJobStatus(
+    jobId: string,
+    deviceId: string,
+    status: string,
+    progress: number,
+    errorCode: string | null = null
+  ) {
+    const updateData: any = {
+      status,
+      progress,
+      updated_at: new Date().toISOString(),
+      error_code: errorCode
+    };
+
+    const { error } = await supabaseAdmin
+      .from('ota_jobs')
+      .update(updateData)
+      .eq('id', jobId);
+
+    if (error) {
+      console.error(`[MQTT Subscriber] Failed to update ota_jobs status for job ${jobId}:`, error.message);
+      return false;
+    }
+
+    console.log(`[MQTT Subscriber] Updated OTA job ${jobId} to ${status} (${progress}%)`);
+
+    if (status === 'SUCCESS' || status === 'FAILED') {
+      this._cleanupOtaHistory(deviceId);
+    }
+    return true;
+  }
+}
+
+/**
+ * cleanupOtaHistory(deviceId)
+ * ---------------------------
+ * Cleans up historical OTA jobs in PostgreSQL so that each device retains
+ * only its current active job and its single latest completed (SUCCESS/FAILED) job.
+ * Deterministically keeps the single newest completed job (using ID as a tie-breaker).
+ */
+export async function cleanupOtaHistory(deviceId: string) {
+  try {
+    // 1. Fetch completed jobs (SUCCESS / FAILED) for this device, ordered by created_at DESC, id DESC
+    const { data, error } = await supabaseAdmin
+      .from('ota_jobs')
+      .select('id')
+      .eq('device_id', deviceId)
+      .in('status', ['SUCCESS', 'FAILED'])
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false });
+
+    if (error) {
+      console.error(`[OTA Cleanup] Failed to fetch completed jobs for ${deviceId}:`, error.message);
+      return;
+    }
+
+    // If we have more than 1 completed job, delete all older ones (indices 1 onwards)
+    if (data && data.length > 1) {
+      const idsToDelete = data.slice(1).map(job => job.id);
+      const { error: deleteError } = await supabaseAdmin
+        .from('ota_jobs')
+        .delete()
+        .in('id', idsToDelete);
+
+      if (deleteError) {
+        console.error(`[OTA Cleanup] Failed to delete older completed jobs for ${deviceId}:`, deleteError.message);
+      } else {
+        console.log(`[OTA Cleanup] Cleaned up ${idsToDelete.length} older completed OTA jobs for ${deviceId}`);
+      }
+    }
+  } catch (err: any) {
+    console.error(`[OTA Cleanup] Unexpected error during OTA jobs cleanup for ${deviceId}:`, err);
   }
 }
 

@@ -57,3 +57,7 @@ BEGIN
   );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- 7. Add composite index for OTA jobs retention cleanup
+CREATE INDEX IF NOT EXISTS idx_ota_jobs_device_created
+ON ota_jobs(device_id, created_at DESC);

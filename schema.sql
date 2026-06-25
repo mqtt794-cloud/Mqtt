@@ -136,3 +136,6 @@ CREATE TABLE IF NOT EXISTS ota_jobs (
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
+
+CREATE INDEX IF NOT EXISTS idx_ota_jobs_device_created
+ON ota_jobs(device_id, created_at DESC);
