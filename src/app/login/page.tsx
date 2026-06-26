@@ -49,6 +49,9 @@ export default function LoginPage() {
         }
       }
     } catch (err: any) {
+      if (err instanceof Error && (err.message === 'NEXT_REDIRECT' || err.message.includes('NEXT_REDIRECT') || (err as any).digest?.startsWith('NEXT_REDIRECT'))) {
+        throw err;
+      }
       setErrorMessage(err.message || 'An unexpected error occurred.');
     } finally {
       setLoading(false);

@@ -76,19 +76,26 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to publish command to broker.' }, { status: 500 });
     }
 
-    // 5. Log command event in the database
-    await supabase
-      .from('device_events')
-      .insert({
-        device_id: deviceId,
-        event_type: 'CONTROL_CMD',
-        payload: {
-          cmdId,
-          relay,
-          state
-        },
-        source: 'Dashboard'
-      });
+    // 5. Log command event in the database in the background (non-blocking)
+    const { after } = await import('next/server');
+    after(async () => {
+      try {
+        await supabase
+          .from('device_events')
+          .insert({
+            device_id: deviceId,
+            event_type: 'CONTROL_CMD',
+            payload: {
+              cmdId,
+              relay,
+              state
+            },
+            source: 'Dashboard'
+          });
+      } catch (logErr) {
+        console.error('[API Control] Background logging exception:', logErr);
+      }
+    });
 
     return NextResponse.json({ success: true, cmdId });
 

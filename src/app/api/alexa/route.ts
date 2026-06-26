@@ -178,31 +178,55 @@ export async function POST(req: NextRequest) {
 
       console.log(`[Alexa Route] ReportState request for endpoint: ${endpointId}`, cookie);
 
-      /**
-       * FUTURE EXPANSION (Read state from DB):
-       *   You will query the database to find the current_state of the relay
-       *   and the online status of the device, then report them back dynamically.
-       *
-       *   For now, we return default states as placeholders.
-       */
+      const deviceId = cookie?.deviceId;
+      const relayNumber = cookie?.relayNumber ? parseInt(cookie.relayNumber, 10) : null;
+
+      if (!deviceId || !relayNumber) {
+        return NextResponse.json(createErrorResponse("Alexa", "NoSuchEndpoint", "Endpoint configuration cookie not found"));
+      }
+
+      // Query database for current relay state and device online status
+      const { supabaseAdmin } = await import("@/lib/supabase");
+      const { data: relayRecord, error: dbError } = await supabaseAdmin
+        .from('relays')
+        .select('current_state, devices(online, homes(user_id))')
+        .eq('device_id', deviceId)
+        .eq('relay_number', relayNumber)
+        .single();
+
+      if (dbError || !relayRecord) {
+        console.error(`[Alexa Route] Failed to fetch state for device ${deviceId} relay ${relayNumber}:`, dbError?.message);
+        return NextResponse.json(createErrorResponse("Alexa", "NoSuchEndpoint", "Device or relay not found"));
+      }
+
+      const device = relayRecord.devices as any;
+      const homes = device?.homes as any;
+      if (homes?.user_id !== userId) {
+        console.warn(`[Alexa Route] Security warning: User ${userId} unauthorized for device ${deviceId}`);
+        return NextResponse.json(createErrorResponse("Alexa", "NoSuchEndpoint", "Access denied"));
+      }
+
+      const powerStateValue = relayRecord.current_state ? "ON" : "OFF";
+      const connectivityValue = device?.online ? "OK" : "UNREACHABLE";
+
       const response: AlexaResponse = {
         context: {
           properties: [
             {
               namespace: "Alexa.PowerController",
               name: "powerState",
-              value: "OFF", // Placeholder state
+              value: powerStateValue,
               timeOfSample: new Date().toISOString(),
-              uncertaintyInMilliseconds: 0
+              uncertaintyInMilliseconds: 500
             },
             {
               namespace: "Alexa.EndpointHealth",
               name: "connectivity",
               value: {
-                value: "OK" // Mapped from device.online
+                value: connectivityValue
               },
               timeOfSample: new Date().toISOString(),
-              uncertaintyInMilliseconds: 0
+              uncertaintyInMilliseconds: 500
             }
           ]
         },

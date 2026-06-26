@@ -73,6 +73,11 @@ export async function uploadFirmwareRelease(formData: FormData): Promise<UploadR
   const arrayBuffer = await file.arrayBuffer();
   const buffer = Buffer.from(arrayBuffer);
 
+  // Magic bytes validation: ESP8266 binaries must start with 0xE9
+  if (buffer.length === 0 || buffer[0] !== 0xE9) {
+    return { success: false, error: 'Invalid firmware binary format. File does not appear to be a valid ESP8266 image.' };
+  }
+
   // Calculate SHA256 hash
   const sha256 = crypto.createHash('sha256').update(buffer).digest('hex');
 

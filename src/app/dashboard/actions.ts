@@ -14,7 +14,7 @@
 
 'use server';
 
-import { createClientOnServer } from '@/lib/supabase';
+import { createClientOnServer, supabaseAdmin } from '@/lib/supabase';
 import { revalidatePath } from 'next/cache';
 import { cookies } from 'next/headers';
 import crypto from 'crypto';
@@ -97,7 +97,7 @@ export async function claimDevice(
   }
 
   // 2. Fetch the device from registry
-  const { data: registryItem, error: registryError } = await supabase
+  const { data: registryItem, error: registryError } = await supabaseAdmin
     .from('device_registry')
     .select('*')
     .eq('device_id', deviceId)
@@ -119,7 +119,7 @@ export async function claimDevice(
   }
 
   // 4. Update registry to claimed = true
-  const { error: updateRegistryError } = await supabase
+  const { error: updateRegistryError } = await supabaseAdmin
     .from('device_registry')
     .update({ claimed: true })
     .eq('device_id', deviceId);
@@ -140,7 +140,7 @@ export async function claimDevice(
 
   if (insertDeviceError) {
     // Rollback claimed state on failure
-    await supabase.from('device_registry').update({ claimed: false }).eq('device_id', deviceId);
+    await supabaseAdmin.from('device_registry').update({ claimed: false }).eq('device_id', deviceId);
     return { error: insertDeviceError.message };
   }
 

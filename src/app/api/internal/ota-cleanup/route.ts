@@ -4,6 +4,15 @@ import { cleanupOtaHistory } from '@/lib/mqttSubscriber';
 
 export async function GET(request: Request) {
   try {
+    // 1. Cron Auth check: verify Vercel Cron authorization header
+    const authHeader = request.headers.get('authorization');
+    const cronSecret = process.env.CRON_SECRET;
+    
+    // Only enforce if CRON_SECRET is defined in the environment
+    if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+      return new Response('Unauthorized', { status: 401 });
+    }
+
     const now = new Date();
     
     // 1. Timeout for downloading/installing: 10 minutes

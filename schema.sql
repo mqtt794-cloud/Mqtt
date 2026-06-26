@@ -139,3 +139,6 @@ CREATE TABLE IF NOT EXISTS ota_jobs (
 
 CREATE INDEX IF NOT EXISTS idx_ota_jobs_device_created
 ON ota_jobs(device_id, created_at DESC);
+
+-- Enable RLS on device_registry
+ALTER TABLE device_registry ENABLE ROW LEVEL SECURITY;

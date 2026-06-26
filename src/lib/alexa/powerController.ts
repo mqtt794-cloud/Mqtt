@@ -87,24 +87,30 @@ export async function handleAlexaPowerControl(
 
     console.log(`[Alexa PowerController] Command [${cmdId}] published successfully.`);
 
-    // 3. Log event into device_events
-    //    This records that the action came from "Alexa" (distinguishing it from the dashboard UI).
-    const { error: logError } = await supabaseAdmin
-      .from('device_events')
-      .insert({
-        device_id: deviceId,
-        event_type: 'CONTROL_CMD',
-        payload: {
-          cmdId,
-          relay: relayNumber,
-          state: turnOn,
-        },
-        source: 'Alexa',
-      });
+    // 3. Log event into device_events in the background (non-blocking)
+    const { after } = await import('next/server');
+    after(async () => {
+      try {
+        const { error: logError } = await supabaseAdmin
+          .from('device_events')
+          .insert({
+            device_id: deviceId,
+            event_type: 'CONTROL_CMD',
+            payload: {
+              cmdId,
+              relay: relayNumber,
+              state: turnOn,
+            },
+            source: 'Alexa',
+          });
 
-    if (logError) {
-      console.error('[Alexa PowerController] Error logging event to database:', logError.message);
-    }
+        if (logError) {
+          console.error('[Alexa PowerController] Error logging event to database:', logError.message);
+        }
+      } catch (logErr) {
+        console.error('[Alexa PowerController] Background logging exception:', logErr);
+      }
+    });
 
     return { success: true, online: deviceRecord.online };
   } catch (err: any) {

@@ -9,7 +9,7 @@
 
 import { redirect }      from 'next/navigation';
 import { cookies }       from 'next/headers';
-import { createClientOnServer } from '@/lib/supabase';
+import { createClientOnServer, supabaseAdmin } from '@/lib/supabase';
 import { logout } from '../login/actions';
 
 import DeviceCard      from './DeviceCard';
@@ -65,7 +65,7 @@ export default async function DashboardPage() {
     throw new Error(`Database query failed: ${error.message} (code: ${error.code})`);
   }
 
-  const { data: unclaimedDevices } = await supabase
+  const { data: unclaimedDevices } = await supabaseAdmin
     .from('device_registry')
     .select('device_id, model')
     .eq('claimed', false)
