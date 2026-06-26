@@ -18,13 +18,8 @@
 
 export async function register() {
   if (process.env.NEXT_RUNTIME === 'nodejs') {
-    // Prevent starting MQTT subscriber inside serverless Vercel environment
-    if (process.env.VERCEL === '1') {
-      console.log('[Instrumentation] Vercel serverless environment detected. Skipping background MQTT subscriber daemon.');
-      return;
-    }
-
     console.log('[Instrumentation] Bootstrap detected. Starting MQTT subscriber service...');
+
     try {
       const { initMqttSubscriber } = await import('./lib/mqttSubscriber');
       await initMqttSubscriber();
