@@ -18,14 +18,23 @@
 
 export async function register() {
   if (process.env.NEXT_RUNTIME === 'nodejs') {
-    console.log('[Instrumentation] Bootstrap detected. Starting MQTT subscriber service...');
+    console.log('[REGISTER] register() entered');
+
+    if (process.env.VERCEL === '1') {
+      console.log('[REGISTER] MQTT subscriber not started inside Vercel serverless runtime. Run npm run worker:mqtt on a persistent worker host.');
+      return;
+    }
+
+    console.log('[REGISTER] Starting MQTT subscriber service...');
 
     try {
       const { initMqttSubscriber } = await import('./lib/mqttSubscriber');
-      await initMqttSubscriber();
-      console.log('[Instrumentation] MQTT subscriber background thread initialized.');
+      const started = await initMqttSubscriber();
+      console.log(started
+        ? '[REGISTER] MQTT subscriber initialized.'
+        : '[REGISTER] MQTT subscriber did not start. Check earlier diagnostics.');
     } catch (error) {
-      console.error('[Instrumentation] WARNING: Failed to initialize MQTT subscriber:', error);
+      console.error('[REGISTER] WARNING: Failed to initialize MQTT subscriber:', error);
     }
   }
 }

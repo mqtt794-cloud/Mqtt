@@ -43,7 +43,7 @@ class MqttSubscriber {
   public async begin() {
     if (this._initialized) {
       console.log('[MQTT Subscriber] Already running.');
-      return;
+      return true;
     }
 
     // ── Step 1: Validate Supabase admin client BEFORE connecting to MQTT ──────
@@ -55,7 +55,7 @@ class MqttSubscriber {
     if (!supabaseReady) {
       console.error('[MQTT Subscriber] ❌ Supabase validation failed. Subscriber will NOT start.');
       console.error('[MQTT Subscriber]    Fix the SUPABASE_SERVICE_ROLE_KEY in .env.local and restart.');
-      return;
+      return false;
     }
 
     // Run watchdog stale jobs cleanup on startup
@@ -68,7 +68,7 @@ class MqttSubscriber {
 
     if (!brokerUrl) {
       console.warn('[MQTT Subscriber] Missing MQTT_BROKER_URL. Subscriber not started.');
-      return;
+      return false;
     }
 
     console.log('[MQTT Subscriber] Starting secure connection to broker...');
@@ -86,13 +86,21 @@ class MqttSubscriber {
       this._initialized = true;
 
       // Subscribe using wildcard '+' for device_id: home/{device_id}/{topic}
-      this._client?.subscribe('home/+/status', { qos: 1 });
-      this._client?.subscribe('home/+/state', { qos: 1 });
-      this._client?.subscribe('home/+/ack', { qos: 1 });
-      this._client?.subscribe('home/+/config_state', { qos: 1 });
-      this._client?.subscribe('home/+/ota_status', { qos: 1 });
+      this._client?.subscribe([
+        'home/+/status',
+        'home/+/state',
+        'home/+/ack',
+        'home/+/config_state',
+        'home/+/ota_status',
+      ], { qos: 1 }, (error, granted) => {
+        if (error) {
+          console.error('[MQTT Subscriber] Subscription failed:', error);
+          return;
+        }
 
-      console.log('[MQTT Subscriber] Subscribed to status, state, config_state, ota_status, and ack wildcards.');
+        const topics = granted.map(({ topic, qos }) => `${topic} (qos ${qos})`).join(', ');
+        console.log(`[MQTT Subscriber] Subscription acknowledged: ${topics}`);
+      });
     });
 
     this._client.on('message', async (topic, message) => {
@@ -106,6 +114,17 @@ class MqttSubscriber {
     this._client.on('error', (error) => {
       console.error('[MQTT Subscriber] Error:', error);
     });
+
+    return true;
+  }
+
+  public stop() {
+    if (this._client) {
+      this._client.end(true);
+      this._client = null;
+    }
+
+    this._initialized = false;
   }
 
   private async _cleanupOtaJobs() {
@@ -652,6 +671,9 @@ export async function cleanupOtaHistory(deviceId: string) {
 // Export initialization routine
 const subscriber = new MqttSubscriber();
 export const initMqttSubscriber = async () => {
-  await subscriber.begin();
+  return subscriber.begin();
 };
 
+export const stopMqttSubscriber = () => {
+  subscriber.stop();
+};
