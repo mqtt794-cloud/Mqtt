@@ -98,7 +98,7 @@ class MqttSubscriber {
           return;
         }
 
-        const topics = granted.map(({ topic, qos }) => `${topic} (qos ${qos})`).join(', ');
+        const topics = (granted ?? []).map(({ topic, qos }) => `${topic} (qos ${qos})`).join(', ');
         console.log(`[MQTT Subscriber] Subscription acknowledged: ${topics}`);
       });
     });
