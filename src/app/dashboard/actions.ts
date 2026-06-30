@@ -96,35 +96,93 @@ export async function claimDevice(
     return { error: 'Access denied: target home not found.' };
   }
 
+  // Normalize inputs
+  const normDeviceId = deviceId.trim().toUpperCase();
+  const normSecret = secret.trim().toUpperCase();
+
+  // Strict format validation
+  const deviceIdRegex = /^ESP\d{3,6}$/;
+  const secretRegex = /^[A-Z0-9]{6}$/;
+
+  if (!deviceIdRegex.test(normDeviceId) || !secretRegex.test(normSecret)) {
+    console.warn(`[MANUAL_REGISTER][SECURITY][WARNING] Format validation failed for Device ID: "${normDeviceId}"`);
+    return { error: 'Invalid Device ID or Device Secret' };
+  }
+
   // 2. Fetch the device from registry
+  console.log(`[MANUAL_REGISTER][LOOKUP] Looking up device in registry: ${normDeviceId}`);
   const { data: registryItem, error: registryError } = await supabaseAdmin
     .from('device_registry')
     .select('*')
-    .eq('device_id', deviceId)
-    .single();
+    .eq('device_id', normDeviceId)
+    .maybeSingle();
 
-  if (registryError || !registryItem) {
-    return { error: 'Device ID not found in the factory registry. Verify the ID.' };
+  let targetRegistryItem = registryItem;
+
+  if (registryError) {
+    console.error(`[MANUAL_REGISTER][ERROR] Registry lookup error for device ${normDeviceId}:`, registryError.message);
+    return { error: 'Database error occurred. Please try again.' };
   }
 
-  if (registryItem.claimed) {
+  // Fallback: If device does not exist in the factory registry, register it manually now
+  if (!targetRegistryItem) {
+    console.log(`[MANUAL_REGISTER][INSERT] Device ${normDeviceId} not found in registry. Automatically inserting...`);
+    const inputHash = crypto.createHash('sha256').update(normSecret).digest('hex');
+
+    const { data: insertedItem, error: insertError } = await supabaseAdmin
+      .from('device_registry')
+      .insert({
+        device_id: normDeviceId,
+        device_secret_hash: inputHash,
+        model: '2CH_RELAY', // Default fallback model
+        claimed: false
+      })
+      .select('*')
+      .single();
+
+    if (insertError) {
+      console.error(`[MANUAL_REGISTER][ERROR] Failed to insert new device ${normDeviceId} into registry:`, insertError.message);
+      return { error: 'Failed to register the new device. Verify the Device ID.' };
+    }
+
+    console.log(`[MANUAL_REGISTER][SUCCESS] Device ${normDeviceId} successfully registered manually.`);
+    targetRegistryItem = insertedItem;
+  }
+
+  if (targetRegistryItem.claimed) {
+    console.warn(`[MANUAL_REGISTER][CLAIM][ERROR] Device ${normDeviceId} is already claimed.`);
     return { error: 'This device has already been claimed.' };
   }
 
-  // 3. Verify the Secret (Allows both hashed and plain text match for easier debugging/claiming)
-  const inputHash = crypto.createHash('sha256').update(secret).digest('hex');
-  const isMatch = (inputHash === registryItem.device_secret_hash) || (secret === registryItem.device_secret_hash);
+  // 3. Verify the Secret (Timing-safe comparison)
+  const inputHash = crypto.createHash('sha256').update(normSecret).digest('hex');
+
+  const compareSecure = (a: string, b: string) => {
+    try {
+      return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
+    } catch {
+      return false;
+    }
+  };
+
+  const isMatch = compareSecure(inputHash, targetRegistryItem.device_secret_hash) ||
+                  compareSecure(normSecret, targetRegistryItem.device_secret_hash);
+
   if (!isMatch) {
-    return { error: 'Invalid device secret. Verification failed.' };
+    console.warn(`[MANUAL_REGISTER][ERROR] Secret verification failed for device ${normDeviceId}.`);
+    return { error: 'Invalid Device ID or Device Secret' };
   }
+
+  console.log(`[MANUAL_REGISTER][CLAIM] Starting claim process for device ${normDeviceId}...`);
 
   // 4. Update registry to claimed = true
   const { error: updateRegistryError } = await supabaseAdmin
     .from('device_registry')
     .update({ claimed: true })
-    .eq('device_id', deviceId);
+    .eq('device_id', normDeviceId);
 
   if (updateRegistryError) {
+    console.error(`[MANUAL_REGISTER][ERROR] Failed to mark device ${normDeviceId} as claimed in registry:`, updateRegistryError.message);
     return { error: 'Database update failed. Try again.' };
   }
 
@@ -133,23 +191,24 @@ export async function claimDevice(
     .from('devices')
     .insert({
       home_id: homeId,
-      device_id: deviceId,
+      device_id: normDeviceId,
       device_name: deviceName.trim(),
-      model: registryItem.model
+      model: targetRegistryItem.model
     });
 
   if (insertDeviceError) {
+    console.error(`[MANUAL_REGISTER][ERROR] Failed to insert device ${normDeviceId} into active devices:`, insertDeviceError.message);
     // Rollback claimed state on failure
-    await supabaseAdmin.from('device_registry').update({ claimed: false }).eq('device_id', deviceId);
+    await supabaseAdmin.from('device_registry').update({ claimed: false }).eq('device_id', normDeviceId);
     return { error: insertDeviceError.message };
   }
 
   // 6. Seed relays in relays table (2 relays for 2CH_RELAY, 4 relays for 4CH_RELAY)
-  const numRelaysToSeed = registryItem.model === '2CH_RELAY' ? 2 : 4;
+  const numRelaysToSeed = targetRegistryItem.model === '2CH_RELAY' ? 2 : 4;
   const relayRows = [];
   for (let i = 1; i <= numRelaysToSeed; i++) {
     relayRows.push({
-      device_id: deviceId,
+      device_id: normDeviceId,
       relay_number: i,
       relay_name: `Relay ${i}`,
       current_state: false
@@ -161,9 +220,10 @@ export async function claimDevice(
     .insert(relayRows);
 
   if (seedRelaysError) {
-    console.error('[Dashboard Actions] Seeding relays failed:', seedRelaysError);
+    console.error('[MANUAL_REGISTER][ERROR] Seeding relays failed:', seedRelaysError.message);
   }
 
+  console.log(`[MANUAL_REGISTER][SUCCESS] Device ${normDeviceId} successfully claimed manually under home ${homeId}.`);
   revalidatePath('/dashboard');
   return { success: true };
 }

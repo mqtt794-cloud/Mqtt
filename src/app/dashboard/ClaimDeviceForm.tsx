@@ -82,6 +82,12 @@ export default function ClaimDeviceForm({ homes, unclaimedDevices }: ClaimDevice
         </div>
 
         {/* Select / Enter Device ID */}
+        {unclaimedDevices.length === 0 && (
+          <div className="border-t border-slate-800/40 my-4 pt-4">
+            <p className="text-xs font-semibold text-slate-400">Can't find your device?</p>
+          </div>
+        )}
+
         <div>
           <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
             Device ID
@@ -103,7 +109,7 @@ export default function ClaimDeviceForm({ homes, unclaimedDevices }: ClaimDevice
               name="deviceId"
               type="text"
               required
-              placeholder="e.g. ESP001"
+              placeholder="Enter Device ID"
               className="w-full px-4 py-3 bg-slate-950/80 border border-slate-800/80 rounded-xl text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-colors text-sm"
             />
           )}
@@ -123,7 +129,7 @@ export default function ClaimDeviceForm({ homes, unclaimedDevices }: ClaimDevice
             name="secret"
             type="password"
             required
-            placeholder="Enter claim verification secret"
+            placeholder="Enter Device Secret"
             className="w-full px-4 py-3 bg-slate-950/80 border border-slate-800/80 rounded-xl text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-colors text-sm"
           />
         </div>
@@ -149,10 +155,15 @@ export default function ClaimDeviceForm({ homes, unclaimedDevices }: ClaimDevice
         >
           {loading ? (
             <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-          ) : (
+          ) : unclaimedDevices.length > 0 ? (
             <>
               <ShieldCheck className="w-4 h-4" />
               Verify & Claim
+            </>
+          ) : (
+            <>
+              <ShieldCheck className="w-4 h-4" />
+              Register & Claim
             </>
           )}
         </button>
