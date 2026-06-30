@@ -42,19 +42,15 @@ class MqttSubscriber {
    */
   public async begin() {
     if (this._initialized) {
-      console.log('[MQTT Subscriber] Already running.');
+      console.log('[SUBSCRIBER] Already running.');
       return true;
     }
 
     // ── Step 1: Validate Supabase admin client BEFORE connecting to MQTT ──────
-    // If the Supabase keys are missing or wrong, there is no point connecting
-    // to the broker — every incoming message would fail to write to the database.
-    // validateSupabaseAdmin() prints a detailed diagnostic and returns false on error.
-    console.log('[MQTT Subscriber] Validating Supabase admin connection...');
+    console.log('[SUBSCRIBER] Validating Supabase admin connection...');
     const supabaseReady = await validateSupabaseAdmin();
     if (!supabaseReady) {
-      console.error('[MQTT Subscriber] ❌ Supabase validation failed. Subscriber will NOT start.');
-      console.error('[MQTT Subscriber]    Fix the SUPABASE_SERVICE_ROLE_KEY in .env.local and restart.');
+      console.error('[SUBSCRIBER][ERROR] Supabase validation failed. Subscriber will NOT start.');
       return false;
     }
 
@@ -67,11 +63,11 @@ class MqttSubscriber {
     const password  = process.env.MQTT_PASSWORD;
 
     if (!brokerUrl) {
-      console.warn('[MQTT Subscriber] Missing MQTT_BROKER_URL. Subscriber not started.');
+      console.warn('[SUBSCRIBER][ERROR] Missing MQTT_BROKER_URL. Subscriber not started.');
       return false;
     }
 
-    console.log('[MQTT Subscriber] Starting secure connection to broker...');
+    console.log(`[MQTT] Connecting to secure broker: ${brokerUrl}`);
 
     this._client = mqtt.connect(brokerUrl, {
       username,
@@ -82,7 +78,7 @@ class MqttSubscriber {
     });
 
     this._client.on('connect', () => {
-      console.log('[MQTT Subscriber] Connected successfully. Registering subscriptions...');
+      console.log('[MQTT] Connected successfully. Registering subscriptions...');
       this._initialized = true;
 
       // Subscribe using wildcard '+' for device_id: home/{device_id}/{topic}
@@ -94,25 +90,27 @@ class MqttSubscriber {
         'home/+/ota_status',
       ], { qos: 1 }, (error, granted) => {
         if (error) {
-          console.error('[MQTT Subscriber] Subscription failed:', error);
+          console.error('[MQTT][ERROR] Subscription failed:', error);
           return;
         }
 
         const topics = (granted ?? []).map(({ topic, qos }) => `${topic} (qos ${qos})`).join(', ');
-        console.log(`[MQTT Subscriber] Subscription acknowledged: ${topics}`);
+        console.log(`[MQTT] Subscription acknowledged: ${topics}`);
       });
     });
 
     this._client.on('message', async (topic, message) => {
+      console.log(`[MQTT] Message received on topic: ${topic}`);
       try {
         await this._handleMessage(topic, message.toString());
       } catch (error) {
-        console.error(`[MQTT Subscriber] Error processing message on topic ${topic}:`, error);
+        console.error(`[MQTT][ERROR] Error processing message on topic ${topic}:`, error);
+        console.error(`[MQTT][ERROR] Payload: ${message.toString()}`);
       }
     });
 
     this._client.on('error', (error) => {
-      console.error('[MQTT Subscriber] Error:', error);
+      console.error('[MQTT][ERROR] Client error:', error);
     });
 
     return true;
@@ -208,19 +206,21 @@ class MqttSubscriber {
    *   status messages cannot create duplicate registry entries.
    */
   private async _handleStatus(deviceId: string, payload: any) {
-    console.log(`[REGISTER] Status packet received`);
-    console.log(`[REGISTER] register=${payload.register}`);
+    console.log(`[STATUS] Packet received for device ${deviceId}`);
+    console.log(`[STATUS] Payload:`, JSON.stringify(payload));
+    console.log(`[REGISTER] Register flag = ${payload.register}`);
 
     const incomingSecret = payload.deviceSecret || payload.secret;
 
     if (payload.register === true || incomingSecret) {
-      console.log(`[REGISTER] Looking up device`);
+      console.log(`[REGISTER] Device registration triggered. Looking up registry for device_id: ${deviceId}`);
 
       const incomingHash = incomingSecret
         ? crypto.createHash('sha256').update(incomingSecret).digest('hex')
         : null;
 
       // Fetch existing device from registry to avoid overwriting
+      console.log(`[SUPABASE] Fetching device_registry for device_id: ${deviceId}`);
       const { data: existing, error: fetchError } = await supabaseAdmin
         .from('device_registry')
         .select('*')
@@ -228,56 +228,54 @@ class MqttSubscriber {
         .maybeSingle();
 
       if (fetchError) {
-        console.error(`[REGISTER] FAILED`);
-        console.error(`Reason: Supabase fetch error`);
-        console.error(`Supabase error:`, fetchError);
-        console.error(`Stack:`, new Error().stack);
-        console.error(`Payload:`, payload);
-        console.error(`Topic: home/${deviceId}/status`);
+        console.error(`[REGISTER][ERROR] Registration lookup FAILED`);
+        console.error(`[SUPABASE][ERROR] Supabase fetch error:`, fetchError.message);
+        console.error(`[ERROR] Stack:`, new Error().stack);
+        console.error(`[ERROR] Payload:`, payload);
+        console.error(`[ERROR] Topic: home/${deviceId}/status`);
         return;
       }
 
       if (existing) {
-        console.log(`[REGISTER] Existing device`);
+        console.log(`[REGISTER] Device already exists in registry.`);
 
         // Existing Device Protection: Do NOT overwrite. Log mismatch if detected.
         if (incomingHash && existing.device_secret_hash !== incomingHash) {
-          console.warn(`[SECURITY]\nSecret mismatch detected\nStored: ${existing.device_secret_hash}\nIncoming: ${incomingHash}`);
+          console.warn(`[REGISTER][WARNING] Secret mismatch detected for device ${deviceId}!`);
         }
         // Auto-upgrade model registry
         if (payload.model && existing.model !== payload.model) {
-          console.log(`[REGISTER] Updating metadata`);
-          console.log(`[DISCOVERY] Upgrading device model from ${existing.model} to ${payload.model} for ${deviceId}`);
+          console.log(`[UPDATE] Upgrading device model from ${existing.model} to ${payload.model} for ${deviceId}`);
           const { error: updateError } = await supabaseAdmin
             .from('device_registry')
             .update({ model: payload.model })
             .eq('device_id', deviceId);
 
           if (updateError) {
-            console.error(`[REGISTER] FAILED`);
-            console.error(`Reason: Supabase update error`);
-            console.error(`Supabase error:`, updateError);
-            console.error(`Stack:`, new Error().stack);
-            console.error(`Payload:`, payload);
-            console.error(`Topic: home/${deviceId}/status`);
+            console.error(`[UPDATE][ERROR] Updating device model FAILED`);
+            console.error(`[SUPABASE][ERROR] Supabase update error:`, updateError.message);
+            console.error(`[ERROR] Stack:`, new Error().stack);
+            console.error(`[ERROR] Payload:`, payload);
+            console.error(`[ERROR] Topic: home/${deviceId}/status`);
             return;
           }
+          console.log(`[UPDATE] Device model updated successfully.`);
         }
         console.log(`[REGISTER] Registration complete`);
       } else {
-        console.log(`[REGISTER] Device not found`);
-        console.log(`[REGISTER] Inserting device`);
+        console.log(`[REGISTER] Device not found in registry. Preparing to insert new device...`);
 
         if (!incomingHash) {
-          console.error(`[REGISTER] FAILED`);
-          console.error(`Reason: Missing device secret for new registration`);
-          console.error(`Stack:`, new Error().stack);
-          console.error(`Payload:`, payload);
-          console.error(`Topic: home/${deviceId}/status`);
+          console.error(`[REGISTER][ERROR] Registration FAILED`);
+          console.error(`[ERROR] Reason: Missing device secret for new registration`);
+          console.error(`[ERROR] Stack:`, new Error().stack);
+          console.error(`[ERROR] Payload:`, payload);
+          console.error(`[ERROR] Topic: home/${deviceId}/status`);
           return;
         }
 
         // New device discovery: Insert incoming secret from firmware
+        console.log(`[INSERT] Inserting device ${deviceId} into device_registry...`);
         const { error: insertError } = await supabaseAdmin
           .from('device_registry')
           .insert({
@@ -288,14 +286,13 @@ class MqttSubscriber {
           });
 
         if (insertError) {
-          console.error(`[REGISTER] FAILED`);
-          console.error(`Reason: Supabase insert error`);
-          console.error(`Supabase error:`, insertError);
-          console.error(`Stack:`, new Error().stack);
-          console.error(`Payload:`, payload);
-          console.error(`Topic: home/${deviceId}/status`);
+          console.error(`[INSERT][ERROR] Device registration insert FAILED`);
+          console.error(`[SUPABASE][ERROR] Supabase insert error:`, insertError.message);
+          console.error(`[ERROR] Stack:`, new Error().stack);
+          console.error(`[ERROR] Payload:`, payload);
+          console.error(`[ERROR] Topic: home/${deviceId}/status`);
         } else {
-          console.log(`[REGISTER] Insert success`);
+          console.log(`[INSERT] Device ${deviceId} inserted successfully into device_registry.`);
           console.log(`[DISCOVERY] Device ID: ${deviceId}`);
           console.log(`[DISCOVERY] Secret Hash Stored`);
           console.log(`[DISCOVERY] Registration Success`);
@@ -303,7 +300,7 @@ class MqttSubscriber {
         }
       }
     } else {
-      console.log(`[REGISTER] Registration skipped`);
+      console.log(`[REGISTER] Registration skipped (register flag is not true and no secret was provided).`);
     }
 
     // 2. Check if device is claimed (exists in devices table)

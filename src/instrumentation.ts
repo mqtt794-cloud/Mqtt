@@ -18,14 +18,7 @@
 
 export async function register() {
   if (process.env.NEXT_RUNTIME === 'nodejs') {
-    console.log('[REGISTER] register() entered');
-
-    if (process.env.VERCEL === '1') {
-      console.log('[REGISTER] MQTT subscriber not started inside Vercel serverless runtime. Run npm run worker:mqtt on a persistent worker host.');
-      return;
-    }
-
-    console.log('[REGISTER] Starting MQTT subscriber service...');
+    console.log('[BOOT] Next.js Server startup hook register() entered. Initializing MQTT subscriber service...');
 
     try {
       const { initMqttSubscriber } = await import('./lib/mqttSubscriber');
